@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "Grass Guru",
+    "slug": "grass-guru",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#2D5016"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.tovlabs.grassguru",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Grass Guru uses your camera to identify your grass type.",
+        "NSPhotoLibraryUsageDescription": "Grass Guru accesses your photos to identify your grass type.",
+        "NSLocationWhenInUseUsageDescription": "Grass Guru uses your location to determine your climate zone and USDA hardiness zone for accurate lawn care recommendations."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#2D5016"
+      },
+      "package": "com.tovlabs.grassguru",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "SCHEDULE_EXACT_ALARM"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Grass Guru uses your camera to identify your grass type."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Grass Guru accesses your photos to identify your grass type."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Grass Guru uses your location to provide accurate, region-specific lawn care recommendations."
+        }
+      ],
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "your-eas-project-id"
+      }
+    }
+  }
+}
