@@ -1,212 +1,316 @@
-import React, { useCallback, useState } from 'react';
+// ─────────────────────────────────────────────────────────────────────────────
+// Dashboard (Home tab) — Sprint 2 redesign
+// Mirrors design_handoff_grass_guru_sprint2/screens.jsx → DashboardScreen.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import React, { useCallback, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, RefreshControl,
+  ActivityIndicator, Dimensions, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
-import { MainTabParamList, LawnProfile, MaintenancePlanTask } from '../../types/lawn';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
+import { MainTabParamList, LawnProfile } from '../../types/lawn';
 import { loadLawnProfile } from '../../storage/lawnStorage';
-import { Colors, Typography, Spacing, Radii, CardStyle, Shadows } from '../../constants/theme';
+import { COLORS, RADII, SPACING, TYPE, ACCENT_FONT } from '../../design/tokens';
+import {
+  AppHeader, Card, CategoryTag, Eyebrow, HealthBadge, Heading,
+} from '../../design/components';
+import {
+  ChevronRight, PlotLawnArt, PlusCircle, CalendarIcon, TodoSquare,
+} from '../../design/icons';
+import { Sigil } from '../../design/Sigil';
+import { findNextTask, MONTHS } from '../../data/seed';
+import { fromLog, formatLoggedAt, Issue } from '../../data/issueModel';
+import { lawnContextFromProfile, greeting, healthPhrase, LawnContextShape } from '../../data/lawnContext';
+import { OverlayParamList } from '../../navigation/types';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Dashboard'>;
 
 export default function DashboardScreen({ route, navigation }: Props) {
+  const overlayNav = useNavigation<NativeStackNavigationProp<OverlayParamList>>();
   const { lawnId } = route.params;
   const [profile, setProfile] = useState<LawnProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     const p = await loadLawnProfile(lawnId);
     setProfile(p);
     setLoading(false);
-    setRefreshing(false);
   }, [lawnId]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  if (loading) {
-    return <View style={styles.centered}><ActivityIndicator color={Colors.primary} size="large" /></View>;
+  const lawn = useMemo(() => (profile ? lawnContextFromProfile(profile) : null), [profile]);
+  const issues = useMemo<Issue[]>(() => (profile?.issue_log ?? []).map(fromLog), [profile]);
+  const todoIssues = issues.filter((i) => i.status === 'active' && i.inTodo);
+
+  const nextTask = useMemo(() => findNextTask(), []);
+
+  if (loading || !profile || !lawn) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator color={COLORS.deepGreen} size="large" />
+      </View>
+    );
   }
 
-  if (!profile) {
-    return <View style={styles.centered}><Text>Lawn not found.</Text></View>;
-  }
-
-  const currentMonth = new Date().getMonth() + 1;
-  const upcomingTasks: MaintenancePlanTask[] = (profile.maintenance_plan?.annual_tasks ?? [])
-    .filter((t) => t.month === currentMonth && !t.completed)
-    .slice(0, 3);
-
-  const activeIssues = profile.issue_log.filter((i) => i.status === 'active');
+  const greet = greeting();
+  const phrase = healthPhrase(lawn.health);
 
   return (
     <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scroll}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={Colors.primary} />}
+      style={{ flex: 1, backgroundColor: COLORS.cream }}
+      contentContainerStyle={{ paddingBottom: 120 }}
+      showsVerticalScrollIndicator={false}
     >
-      {/* Lawn card */}
-      <View style={styles.heroCard}>
-        <View style={styles.heroTop}>
-          <View>
-            <Text style={styles.lawnName}>{profile.name}</Text>
-            <Text style={styles.lawnLocation}>{profile.location.city}, {profile.location.state}</Text>
-          </View>
-          <View style={styles.conditionBadge}>
-            <Text style={styles.conditionText}>{profile.condition.replace('_', ' ')}</Text>
-          </View>
-        </View>
-        <View style={styles.statsRow}>
-          <Stat label="Grass" value={profile.grass.type} />
-          <Stat label="Area" value={`${profile.total_sq_ft.toLocaleString()} sq ft`} />
-          <Stat label="Zone" value={profile.location.usda_zone} />
-        </View>
-      </View>
-
-      {/* Upcoming tasks */}
-      <SectionHeader
-        title="This Month's Tasks"
-        action="See All"
-        onAction={() => navigation.navigate('MaintenancePlan', { lawnId })}
-      />
-      {upcomingTasks.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>
-            {profile.maintenance_plan
-              ? '✅ No pending tasks for this month.'
-              : '📅 Generate your maintenance plan to see tasks here.'}
-          </Text>
-          {!profile.maintenance_plan && (
-            <TouchableOpacity
-              style={styles.generateButton}
-              onPress={() => navigation.navigate('MaintenancePlan', { lawnId })}
-            >
-              <Text style={styles.generateButtonText}>Generate Plan</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      ) : (
-        upcomingTasks.map((task) => (
-          <View key={task.task_id} style={styles.taskCard}>
-            <Text style={styles.taskTitle}>{task.title}</Text>
-            <Text style={styles.taskDesc} numberOfLines={2}>{task.description}</Text>
-            <View style={[styles.categoryBadge]}>
-              <Text style={styles.categoryText}>{task.category.replace('_', ' ')}</Text>
-            </View>
-          </View>
-        ))
-      )}
-
-      {/* Active issues */}
-      <SectionHeader
-        title="Active Issues"
-        action="Log Issue"
-        onAction={() =>
-          navigation.navigate('IssueLog', { lawnId })
+      <AppHeader
+        eyebrow={lawn.street.toUpperCase()}
+        right={<HealthBadge status={lawn.health} />}
+        bottomPad={18}
+        title={
+          <Heading level={1} italic>
+            {greet},{'\n'}
+            <Text style={{ opacity: 0.7 }}>your lawn is</Text>{' '}
+            <Text style={{ color: COLORS.leafGreen }}>{phrase}</Text>.
+          </Heading>
         }
       />
-      {activeIssues.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>🌿 No active issues. Looking great!</Text>
-        </View>
-      ) : (
-        activeIssues.slice(0, 3).map((issue) => (
-          <View key={issue.issue_id} style={styles.issueCard}>
-            <View style={[styles.issueDot, { backgroundColor: Colors.error }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.issueType}>{issue.type.replace('_', ' ')}</Text>
-              <Text style={styles.issueDesc} numberOfLines={1}>{issue.description}</Text>
-            </View>
-            <Text style={styles.issueDate}>{issue.logged_at.slice(0, 10)}</Text>
-          </View>
-        ))
-      )}
 
-      {/* Quick actions */}
-      <SectionHeader title="Quick Actions" />
-      <View style={styles.quickActions}>
-        <QuickAction emoji="📷" label="ID Grass" onPress={() => navigation.navigate('LawnProfile', { lawnId })} />
-        <QuickAction emoji="⚠️" label="Log Issue" onPress={() => navigation.navigate('IssueLog', { lawnId })} />
-        <QuickAction emoji="📋" label="View Plan" onPress={() => navigation.navigate('MaintenancePlan', { lawnId })} />
-        <QuickAction emoji="✏️" label="Edit Profile" onPress={() => navigation.navigate('LawnProfile', { lawnId })} />
+      <View style={{ paddingHorizontal: SPACING.appX }}>
+        <LawnHeroPlot lawn={lawn} />
+
+        {todoIssues.length > 0 && (
+          <View style={{ marginTop: 18 }}>
+            <View style={[styles.sectionHead, { paddingLeft: 4 }]}>
+              <Eyebrow>To-do</Eyebrow>
+              <Text style={styles.outstanding}>
+                {todoIssues.length} OUTSTANDING
+              </Text>
+            </View>
+            <View style={{ gap: 8 }}>
+              {todoIssues.map((iss) => (
+                <Card
+                  key={iss.id}
+                  padding={14}
+                  onPress={() => overlayNav.navigate('CareCard', { lawnId, issueId: iss.id })}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={styles.todoStripe} />
+                    <View style={styles.todoAvatar}>
+                      <TodoSquare />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12, marginRight: 8 }}>
+                      <Text style={styles.todoTitle}>{iss.care.title || iss.type}</Text>
+                      <Text style={styles.todoSub}>
+                        {iss.zone} · logged {formatLoggedAt(iss.loggedAt)}
+                      </Text>
+                    </View>
+                    <ChevronRight />
+                  </View>
+                </Card>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {nextTask && (
+          <View style={{ marginTop: 18 }}>
+            <Eyebrow style={{ marginBottom: 8, paddingLeft: 4 }}>Coming up</Eyebrow>
+            <Card onPress={() => navigation.navigate('MaintenancePlan', { lawnId })}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <CategoryTag cat={nextTask.task.cat} />
+                  <Text style={styles.nextTaskTitle}>{nextTask.task.title}</Text>
+                  <Text style={styles.nextTaskDetail}>{nextTask.task.detail}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.thisWeek}>
+                    {nextTask.month === MONTHS[new Date().getMonth()] ? 'THIS WEEK' : nextTask.month.toUpperCase()}
+                  </Text>
+                  <Text style={styles.dayOfWeek}>{dayOfWeek()}</Text>
+                </View>
+              </View>
+            </Card>
+          </View>
+        )}
+
+        <View style={{ marginTop: 22 }}>
+          <Eyebrow style={{ marginBottom: 8, paddingLeft: 4 }}>Quick actions</Eyebrow>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <QuickAction
+              icon={<PlusCircle />}
+              label={'Log\nIssue'}
+              onPress={() => overlayNav.navigate('LogIssue', { lawnId })}
+            />
+            <QuickAction
+              icon={<Sigil size={22} tone="cream" />}
+              label={'Ask\nGuru'}
+              onPress={() => overlayNav.navigate('AskGuru', { lawnId })}
+            />
+            <QuickAction
+              icon={<CalendarIcon />}
+              label={'View\nPlan'}
+              onPress={() => navigation.navigate('MaintenancePlan', { lawnId })}
+            />
+          </View>
+        </View>
+
+        <View style={{ marginTop: 22 }}>
+          <Eyebrow style={{ marginBottom: 8, paddingLeft: 4 }}>Conditions</Eyebrow>
+          <Card padding={16}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <ConditionCol label="Soil temp" value="58°F" sub="rising" />
+              <ConditionCol label="Rainfall" value={'0.4"'} sub="past 7d" />
+              <ConditionCol label="Mow day" value="Sat" sub="next" />
+            </View>
+          </Card>
+        </View>
       </View>
     </ScrollView>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function LawnHeroPlot({ lawn }: { lawn: LawnContextShape }) {
+  const W = Math.min(358, Dimensions.get('window').width - SPACING.appX * 2);
+  const H = 210;
   return (
-    <View style={styles.stat}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={{ borderRadius: RADII.card, overflow: 'hidden', height: H, width: W, alignSelf: 'center' }}>
+      <PlotLawnArt width={W} height={H} />
+      <View style={styles.heroOverlay}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.heroEyebrow}>{lawn.grassType.toUpperCase()}</Text>
+          <Text style={styles.heroNumber}>
+            {lawn.sqft.toLocaleString()}
+            <Text style={styles.heroNumberSuffix}> sq ft</Text>
+          </Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={styles.heroEyebrow}>{lawn.zone.toUpperCase()}</Text>
+          <View style={styles.heroHealthPill}>
+            <View style={styles.heroHealthDot} />
+            <Text style={styles.heroHealthText}>{lawn.health}</Text>
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
 
-function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
+function QuickAction({ icon, label, onPress }: { icon: React.ReactNode; label: string; onPress: () => void }) {
   return (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {action && onAction && (
-        <TouchableOpacity onPress={onAction}><Text style={styles.sectionAction}>{action}</Text></TouchableOpacity>
-      )}
+    <View style={{ flex: 1 }}>
+      <Card padding={14} onPress={onPress} style={{ alignItems: 'center' }}>
+        <View style={styles.qaIconBg}>{icon}</View>
+        <Text style={styles.qaLabel}>{label}</Text>
+      </Card>
     </View>
   );
 }
 
-function QuickAction({ emoji, label, onPress }: { emoji: string; label: string; onPress: () => void }) {
+function ConditionCol({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
-    <TouchableOpacity style={styles.quickAction} onPress={onPress} activeOpacity={0.7}>
-      <Text style={styles.quickActionEmoji}>{emoji}</Text>
-      <Text style={styles.quickActionLabel}>{label}</Text>
-    </TouchableOpacity>
+    <View style={{ flex: 1 }}>
+      <Text style={styles.condLabel}>{label.toUpperCase()}</Text>
+      <Text style={styles.condValue}>{value}</Text>
+      <Text style={styles.condSub}>{sub}</Text>
+    </View>
   );
+}
+
+function dayOfWeek(): string {
+  return new Date().toLocaleDateString('en-US', { weekday: 'short' });
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.parchment },
-  scroll: { padding: Spacing.md, paddingBottom: Spacing['3xl'], gap: Spacing.sm },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.cream },
 
-  heroCard: {
-    backgroundColor: Colors.primary, borderRadius: Radii.lg, padding: Spacing.lg,
-    ...Shadows.md, gap: Spacing.md,
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 },
+  outstanding: {
+    ...ACCENT_FONT,
+    fontSize: 11,
+    color: COLORS.deepGreen,
+    opacity: 0.55,
+    letterSpacing: 0.88,
+    textTransform: 'uppercase',
   },
-  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  lawnName: { fontSize: Typography.size.xl, fontWeight: Typography.weight.bold, color: Colors.white },
-  lawnLocation: { fontSize: Typography.size.sm, color: Colors.accentLight, marginTop: 2 },
-  conditionBadge: { backgroundColor: Colors.accent, borderRadius: Radii.full, paddingVertical: 3, paddingHorizontal: Spacing.sm },
-  conditionText: { fontSize: Typography.size.xs, fontWeight: Typography.weight.bold, color: Colors.primaryDark },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  stat: { alignItems: 'center', gap: 2 },
-  statValue: { fontSize: Typography.size.base, fontWeight: Typography.weight.bold, color: Colors.white },
-  statLabel: { fontSize: Typography.size.xs, color: Colors.accentLight },
 
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: Spacing.sm },
-  sectionTitle: { fontSize: Typography.size.md, fontWeight: Typography.weight.bold, color: Colors.textPrimary },
-  sectionAction: { fontSize: Typography.size.sm, color: Colors.primary, fontWeight: Typography.weight.semibold },
+  todoStripe: { width: 4, alignSelf: 'stretch', minHeight: 32, borderRadius: 4, backgroundColor: COLORS.amber },
+  todoAvatar: {
+    width: 30, height: 30, borderRadius: 999, marginLeft: 12,
+    backgroundColor: `${COLORS.amber}1f`,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  todoTitle: {
+    ...TYPE.headingSM,
+    fontSize: 16, lineHeight: 20,
+    fontStyle: 'italic',
+  },
+  todoSub: { ...TYPE.bodySoft, fontSize: 12.5, marginTop: 2 },
 
-  emptyCard: { ...CardStyle, alignItems: 'center', gap: Spacing.sm },
-  emptyText: { fontSize: Typography.size.base, color: Colors.textSecondary, textAlign: 'center' },
-  generateButton: { backgroundColor: Colors.primary, borderRadius: Radii.full, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg },
-  generateButtonText: { color: Colors.white, fontWeight: Typography.weight.semibold, fontSize: Typography.size.base },
+  nextTaskTitle: {
+    ...TYPE.headingMD,
+    fontSize: 19, lineHeight: 24,
+    marginTop: 10,
+  },
+  nextTaskDetail: { ...TYPE.bodySoft, marginTop: 6 },
+  thisWeek: {
+    ...ACCENT_FONT,
+    fontSize: 12, color: COLORS.deepGreen, opacity: 0.55,
+    letterSpacing: 0.96, textTransform: 'uppercase',
+  },
+  dayOfWeek: {
+    ...TYPE.headingMD,
+    fontSize: 28, lineHeight: 32, fontStyle: 'italic', marginTop: 4,
+  },
 
-  taskCard: { ...CardStyle, gap: Spacing.xs },
-  taskTitle: { fontSize: Typography.size.base, fontWeight: Typography.weight.semibold, color: Colors.textPrimary },
-  taskDesc: { fontSize: Typography.size.sm, color: Colors.textSecondary, lineHeight: Typography.size.sm * Typography.leading.normal },
-  categoryBadge: { alignSelf: 'flex-start', backgroundColor: Colors.primaryPale, borderRadius: Radii.full, paddingVertical: 2, paddingHorizontal: Spacing.sm },
-  categoryText: { fontSize: Typography.size.xs, color: Colors.primary, fontWeight: Typography.weight.semibold },
+  heroOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    padding: 18, flexDirection: 'row', alignItems: 'flex-end',
+    backgroundColor: 'rgba(26,58,42,0.35)',
+  },
+  heroEyebrow: {
+    color: COLORS.cream,
+    fontSize: 12,
+    letterSpacing: 1.44,
+    textTransform: 'uppercase',
+    opacity: 0.78,
+    fontWeight: '600',
+  },
+  heroNumber: {
+    color: COLORS.cream,
+    fontSize: 34, lineHeight: 38,
+    fontWeight: '500',
+    fontStyle: 'italic',
+    marginTop: 6,
+  },
+  heroNumberSuffix: {
+    fontSize: 16, fontStyle: 'normal', opacity: 0.7,
+    fontWeight: '400',
+    letterSpacing: 0.8,
+  },
+  heroHealthPill: {
+    flexDirection: 'row', alignItems: 'center', marginTop: 6,
+    backgroundColor: 'rgba(255,255,255,0.13)',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 999,
+  },
+  heroHealthDot: { width: 7, height: 7, borderRadius: 7, backgroundColor: COLORS.leafGreen, marginRight: 6 },
+  heroHealthText: { color: COLORS.cream, fontSize: 12, fontWeight: '600', letterSpacing: 0.48 },
 
-  issueCard: { ...CardStyle, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  issueDot: { width: 8, height: 8, borderRadius: 4 },
-  issueType: { fontSize: Typography.size.base, fontWeight: Typography.weight.semibold, color: Colors.textPrimary, textTransform: 'capitalize' },
-  issueDesc: { fontSize: Typography.size.sm, color: Colors.textSecondary },
-  issueDate: { fontSize: Typography.size.xs, color: Colors.textMuted },
+  qaIconBg: {
+    width: 40, height: 40, borderRadius: 999,
+    backgroundColor: COLORS.softCardBg,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 8,
+  },
+  qaLabel: {
+    fontSize: 13, fontWeight: '600', color: COLORS.deepGreen,
+    textAlign: 'center', lineHeight: 16,
+  },
 
-  quickActions: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.sm },
-  quickAction: { flex: 1, ...CardStyle, alignItems: 'center', gap: Spacing.xs, padding: Spacing.md },
-  quickActionEmoji: { fontSize: 26 },
-  quickActionLabel: { fontSize: Typography.size.xs, color: Colors.textSecondary, fontWeight: Typography.weight.medium, textAlign: 'center' },
+  condLabel: { fontSize: 9, fontWeight: '600', letterSpacing: 1.08, textTransform: 'uppercase', color: COLORS.deepGreen, opacity: 0.6 },
+  condValue: { ...TYPE.headingMD, fontSize: 22, lineHeight: 26, marginTop: 4 },
+  condSub: { fontSize: 11, color: COLORS.inkSoft, marginTop: 2 },
 });

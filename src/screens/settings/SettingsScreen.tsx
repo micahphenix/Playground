@@ -1,24 +1,48 @@
-import React, { useEffect, useState } from 'react';
-import {
-  View, Text, StyleSheet, ScrollView, Switch, TouchableOpacity, Alert,
-} from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { loadActiveLawnProfile, saveLawnProfile } from '../../storage/lawnStorage';
-import { LawnProfile, RootParamList } from '../../types/lawn';
-import { Colors, Typography, Spacing, Radii, CardStyle } from '../../constants/theme';
+// ─────────────────────────────────────────────────────────────────────────────
+// Settings (Profile tab) — Sprint 2 redesign
+// ─────────────────────────────────────────────────────────────────────────────
 
-type NavProp = NativeStackNavigationProp<RootParamList>;
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Pressable, ScrollView, StyleSheet, Switch, Text, View,
+} from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
+import { LawnProfile } from '../../types/lawn';
+import { loadActiveLawnProfile, saveLawnProfile } from '../../storage/lawnStorage';
+import { COLORS, RADII, SPACING, TYPE, ACCENT_FONT } from '../../design/tokens';
+import { AppHeader, Card, Eyebrow, GGButton, Heading } from '../../design/components';
+import { ChevronRight } from '../../design/icons';
+import { lawnContextFromProfile } from '../../data/lawnContext';
+import { OverlayParamList } from '../../navigation/types';
+
+const NOTIF_TIMES = ['7:00 AM', '8:00 AM'] as const;
 
 export default function SettingsScreen() {
-  const navigation = useNavigation<NavProp>();
+  const overlayNav = useNavigation<NativeStackNavigationProp<OverlayParamList>>();
   const [profile, setProfile] = useState<LawnProfile | null>(null);
+  const [notifs, setNotifs] = useState(true);
+  const [notifTime, setNotifTime] = useState<typeof NOTIF_TIMES[number]>('8:00 AM');
+  const [briefingFired, setBriefingFired] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadActiveLawnProfile().then((p) => {
+        setProfile(p);
+        if (p) setNotifs(p.notification_preferences.enabled);
+      });
+    }, []),
+  );
 
   useEffect(() => {
-    loadActiveLawnProfile().then(setProfile);
-  }, []);
+    if (!briefingFired) return;
+    const t = setTimeout(() => setBriefingFired(false), 2000);
+    return () => clearTimeout(t);
+  }, [briefingFired]);
 
-  async function toggleNotifications(value: boolean) {
+  async function toggleNotifs(value: boolean) {
+    setNotifs(value);
     if (!profile) return;
     const updated = {
       ...profile,
@@ -28,133 +52,158 @@ export default function SettingsScreen() {
     setProfile(updated);
   }
 
-  function handleResetOnboarding() {
-    Alert.alert(
-      'Reset Onboarding',
-      'This will clear your active lawn ID and return you to the welcome screen. Your lawn data will not be deleted.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            const { deleteAsync, documentDirectory } = await import('expo-file-system');
-            const keyFile = `${documentDirectory}active_lawn_id.txt`;
-            try { await deleteAsync(keyFile, { idempotent: true }); } catch {}
-            navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
-          },
-        },
-      ],
-    );
+  if (!profile) {
+    return <View style={styles.centered}><Text>Loading…</Text></View>;
   }
 
-  const notificationsEnabled = profile?.notification_preferences.enabled ?? false;
+  const lawn = lawnContextFromProfile(profile);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scroll}>
-      {/* Notifications */}
-      <Text style={styles.sectionTitle}>Notifications</Text>
-      <View style={styles.card}>
-        <SettingRow
-          label="Push Notifications"
-          sub="Lawn care reminders and seasonal alerts"
-          right={
-            <Switch
-              value={notificationsEnabled}
-              onValueChange={toggleNotifications}
-              trackColor={{ false: Colors.border, true: Colors.primaryLight }}
-              thumbColor={notificationsEnabled ? Colors.primary : Colors.textMuted}
+    <ScrollView
+      style={{ flex: 1, backgroundColor: COLORS.cream }}
+      contentContainerStyle={{ paddingBottom: 120 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <AppHeader
+        eyebrow="PROFILE"
+        title={
+          <Heading level={1} italic>
+            <Text style={{ opacity: 0.6 }}>Your</Text> lawn
+          </Heading>
+        }
+      />
+
+      <View style={{ paddingHorizontal: SPACING.appX, gap: 22 }}>
+        {/* My Lawn */}
+        <View>
+          <Eyebrow style={{ marginBottom: 8, paddingLeft: 4 }}>My lawn</Eyebrow>
+          <Card padding={0}>
+            <Row label="Grass type"     value={lawn.grassType} onPress={() => {}} />
+            <Row label="Square footage" value={`${lawn.sqft.toLocaleString()} sq ft`} onPress={() => {}} />
+            <Row label="Irrigation"     value={lawn.irrigation} onPress={() => {}} />
+            <Row label="Sun exposure"   value={lawn.sun} onPress={() => {}} last />
+          </Card>
+        </View>
+
+        {/* Notifications */}
+        <View>
+          <Eyebrow style={{ marginBottom: 8, paddingLeft: 4 }}>Notifications</Eyebrow>
+          <Card padding={0}>
+            <View style={[styles.row, { borderBottomWidth: 0.5, borderBottomColor: COLORS.line }]}>
+              <Text style={styles.rowLabel}>Push notifications</Text>
+              <Switch
+                value={notifs}
+                onValueChange={toggleNotifs}
+                trackColor={{ false: '#cdc6b6', true: COLORS.leafGreen }}
+                thumbColor="#fff"
+              />
+            </View>
+            <Row
+              label="Preferred time"
+              value={notifTime}
+              onPress={() => setNotifTime((t) => (t === '8:00 AM' ? '7:00 AM' : '8:00 AM'))}
+              last
             />
-          }
-        />
-        <SettingRow
-          label="Advance Notice"
-          sub="Days before task to send reminder"
-          right={<Text style={styles.valueText}>{profile?.notification_preferences.advance_days ?? 3} days</Text>}
-        />
-      </View>
+          </Card>
+        </View>
 
-      {/* About */}
-      <Text style={styles.sectionTitle}>About</Text>
-      <View style={styles.card}>
-        <SettingRow label="App Version" right={<Text style={styles.valueText}>1.0.0</Text>} />
-        <SettingRow label="Model" right={<Text style={styles.valueText}>Claude Opus 4.6</Text>} />
-        <SettingRow
-          label="AI Disclaimer"
-          sub="Grass Guru provides informational recommendations only and is not a substitute for professional agronomic advice."
-        />
-      </View>
+        {/* Subscription */}
+        <View>
+          <Eyebrow style={{ marginBottom: 8, paddingLeft: 4 }}>Subscription</Eyebrow>
+          <Card padding={16}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View>
+                <Text style={styles.planTitle}>Grass Guru Free</Text>
+                <Text style={styles.planSub}>7 / 10 AI requests this month</Text>
+              </View>
+              <Pressable
+                onPress={() => overlayNav.navigate('Paywall')}
+                style={styles.upgradeBtn}
+              >
+                <Text style={styles.upgradeText}>Upgrade</Text>
+              </Pressable>
+            </View>
+          </Card>
+        </View>
 
-      {/* Account */}
-      <Text style={styles.sectionTitle}>Account</Text>
-      <View style={styles.card}>
-        <SettingRow label="Plan" right={
-          <View style={styles.freeBadge}><Text style={styles.freeBadgeText}>Free</Text></View>
-        } />
-        <TouchableOpacity style={styles.proButton} activeOpacity={0.85}>
-          <Text style={styles.proButtonText}>Upgrade to Grass Guru Pro</Text>
-          <Text style={styles.proButtonSub}>$4.99/mo or $39/yr · Unlimited profiles, full export, priority AI</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Developer */}
+        <View>
+          <Eyebrow style={{ marginBottom: 8, paddingLeft: 4 }}>Developer</Eyebrow>
+          <Card padding={16}>
+            <Text style={styles.devCopy}>
+              For testing. Fires the BGTaskScheduler check immediately.
+            </Text>
+            <GGButton
+              kind="ghost"
+              size="sm"
+              full
+              onPress={() => setBriefingFired(true)}
+            >
+              {briefingFired ? '✓ Briefing queued' : 'Trigger weekly briefing'}
+            </GGButton>
+          </Card>
+        </View>
 
-      {/* Data */}
-      <Text style={styles.sectionTitle}>Data</Text>
-      <View style={styles.card}>
-        <TouchableOpacity style={styles.dangerRow} onPress={handleResetOnboarding}>
-          <Text style={styles.dangerText}>Reset Onboarding</Text>
-          <Text style={styles.dangerSub}>Returns to welcome screen without deleting data</Text>
-        </TouchableOpacity>
+        {/* About */}
+        <View style={{ alignItems: 'center', marginTop: 6 }}>
+          <Text style={styles.aboutPrimary}>Grass Guru · v1.0.2</Text>
+          <Text style={styles.aboutSecondary}>by TOV Labs · tovlabs.ai</Text>
+        </View>
       </View>
-
-      <Text style={styles.footer}>Grass Guru · Built by TOV Labs · tovlabs.ai</Text>
     </ScrollView>
   );
 }
 
-function SettingRow({
-  label,
-  sub,
-  right,
-}: {
-  label: string;
-  sub?: string;
-  right?: React.ReactNode;
-}) {
-  return (
-    <View style={styles.row}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        {sub && <Text style={styles.rowSub}>{sub}</Text>}
+function Row({
+  label, value, onPress, last,
+}: { label: string; value: string; onPress?: () => void; last?: boolean }) {
+  const inner = (
+    <View style={[styles.row, !last && { borderBottomWidth: 0.5, borderBottomColor: COLORS.line }]}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text style={styles.rowValue}>{value}</Text>
+        {onPress && <ChevronRight color={COLORS.ink} opacity={0.34} size={7} />}
       </View>
-      {right && <View style={styles.rowRight}>{right}</View>}
     </View>
   );
+  return onPress ? <Pressable onPress={onPress}>{inner}</Pressable> : inner;
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.parchment },
-  scroll: { padding: Spacing.md, paddingBottom: Spacing['3xl'], gap: Spacing.md },
-  sectionTitle: { fontSize: Typography.size.sm, fontWeight: Typography.weight.bold, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 },
-  card: { ...CardStyle, padding: 0, overflow: 'hidden', gap: 0 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.cream },
+
   row: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
-  rowLabel: { fontSize: Typography.size.base, color: Colors.textPrimary },
-  rowSub: { fontSize: Typography.size.sm, color: Colors.textMuted, marginTop: 2, lineHeight: Typography.size.sm * Typography.leading.relaxed },
-  rowRight: { marginLeft: Spacing.sm },
-  valueText: { fontSize: Typography.size.base, color: Colors.textSecondary },
-  freeBadge: { backgroundColor: Colors.surface, borderRadius: Radii.full, paddingVertical: 2, paddingHorizontal: Spacing.md, borderWidth: 1, borderColor: Colors.border },
-  freeBadgeText: { fontSize: Typography.size.sm, color: Colors.textSecondary, fontWeight: Typography.weight.semibold },
-  proButton: {
-    backgroundColor: Colors.primary, margin: Spacing.md, borderRadius: Radii.md,
-    padding: Spacing.md, alignItems: 'center', gap: 4,
+  rowLabel: { fontSize: 15, color: COLORS.ink },
+  rowValue: { fontSize: 14, color: COLORS.inkSoft },
+
+  planTitle: { ...TYPE.headingSM },
+  planSub: { ...TYPE.bodySoft, fontSize: 13, marginTop: 2 },
+  upgradeBtn: {
+    backgroundColor: COLORS.amber,
+    height: 34, paddingHorizontal: 14,
+    borderRadius: RADII.pill,
+    alignItems: 'center', justifyContent: 'center',
   },
-  proButtonText: { color: Colors.white, fontWeight: Typography.weight.bold, fontSize: Typography.size.base },
-  proButtonSub: { color: Colors.accentLight, fontSize: Typography.size.xs, textAlign: 'center' },
-  dangerRow: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.md },
-  dangerText: { fontSize: Typography.size.base, color: Colors.error, fontWeight: Typography.weight.semibold },
-  dangerSub: { fontSize: Typography.size.sm, color: Colors.textMuted, marginTop: 2 },
-  footer: { textAlign: 'center', color: Colors.textMuted, fontSize: Typography.size.sm, marginTop: Spacing.md },
+  upgradeText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+
+  devCopy: { fontSize: 12, color: COLORS.inkSoft, marginBottom: 10 },
+
+  aboutPrimary: {
+    ...ACCENT_FONT,
+    fontSize: 11, color: COLORS.inkFaint,
+    letterSpacing: 1.1, textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+  aboutSecondary: {
+    ...ACCENT_FONT,
+    fontSize: 11, color: COLORS.inkFaint, opacity: 0.7,
+    letterSpacing: 1.1, textTransform: 'uppercase',
+    textAlign: 'center', marginTop: 2,
+  },
 });

@@ -1,21 +1,23 @@
-import React, { useCallback, useState } from 'react';
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue History (Issues tab) — Sprint 2 redesign
+// Chronological list with a "+ Log" pill button in the header.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import React, { useCallback, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
+  ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { IssuesStackParamList, LawnProfile, IssueLog, IssueStatus } from '../../types/lawn';
+
+import { LawnProfile } from '../../types/lawn';
 import { loadLawnProfile } from '../../storage/lawnStorage';
-import { Colors, Typography, Spacing, Radii, CardStyle } from '../../constants/theme';
-
-type NavProp = NativeStackNavigationProp<IssuesStackParamList, 'IssueLog'>;
-
-const STATUS_COLORS: Record<IssueStatus, string> = {
-  active: Colors.statusActive,
-  treated: Colors.statusTreated,
-  resolved: Colors.statusResolved,
-  monitoring: Colors.statusMonitoring,
-};
+import { COLORS, RADII, SPACING, TYPE } from '../../design/tokens';
+import { AppHeader, Card, Heading, StatusPill } from '../../design/components';
+import { Sigil } from '../../design/Sigil';
+import { ChevronRight, AlertTriangle, TreatedCheck } from '../../design/icons';
+import { fromLog, formatLoggedAt, Issue } from '../../data/issueModel';
+import { OverlayParamList } from '../../navigation/types';
 
 interface Props {
   route: { params: { lawnId: string } };
@@ -23,10 +25,9 @@ interface Props {
 
 export default function IssueLogScreen({ route }: Props) {
   const { lawnId } = route.params;
-  const navigation = useNavigation<NavProp>();
+  const overlayNav = useNavigation<NativeStackNavigationProp<OverlayParamList>>();
   const [profile, setProfile] = useState<LawnProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<IssueStatus | 'all'>('all');
 
   useFocusEffect(
     useCallback(() => {
@@ -34,121 +35,111 @@ export default function IssueLogScreen({ route }: Props) {
     }, [lawnId]),
   );
 
-  const issues = (profile?.issue_log ?? [])
-    .filter((i) => filter === 'all' || i.status === filter)
-    .sort((a, b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime());
+  const issues = useMemo<Issue[]>(
+    () => (profile?.issue_log ?? [])
+      .map(fromLog)
+      .sort((a, b) => new Date(b.loggedAt).getTime() - new Date(a.loggedAt).getTime()),
+    [profile],
+  );
 
   if (loading) {
-    return <View style={styles.centered}><ActivityIndicator color={Colors.primary} size="large" /></View>;
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator color={COLORS.deepGreen} size="large" />
+      </View>
+    );
   }
 
   return (
-    <View style={styles.container}>
-      {/* Filter bar */}
-      <View style={styles.filterBar}>
-        {(['all', 'active', 'treated', 'resolved'] as const).map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.filterChip, filter === f && styles.filterChipActive]}
-            onPress={() => setFilter(f)}
-          >
-            <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-              {f.charAt(0).toUpperCase() + f.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <FlatList
-        data={issues}
-        keyExtractor={(item) => item.issue_id}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>🌿</Text>
-            <Text style={styles.emptyTitle}>No issues logged</Text>
-            <Text style={styles.emptySub}>
-              {filter === 'all'
-                ? "Tap the button below to log your first issue."
-                : `No ${filter} issues to show.`}
-            </Text>
-          </View>
+    <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
+      <AppHeader
+        eyebrow="ISSUE HISTORY"
+        title={
+          <Heading level={1} italic>
+            <Text style={{ opacity: 0.6 }}>What you've</Text> flagged
+          </Heading>
         }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.issueCard}
-            onPress={() => navigation.navigate('IssueDetail', { lawnId, issueId: item.issue_id })}
-            activeOpacity={0.7}
+        right={
+          <Pressable
+            onPress={() => overlayNav.navigate('LogIssue', { lawnId })}
+            style={styles.logBtn}
           >
-            <View style={[styles.statusBar, { backgroundColor: STATUS_COLORS[item.status] }]} />
-            <View style={styles.issueContent}>
-              <View style={styles.issueRow}>
-                <Text style={styles.issueType}>{item.type.replace('_', ' ')}</Text>
-                <StatusBadge status={item.status} />
-              </View>
-              <Text style={styles.issueDesc} numberOfLines={2}>{item.description}</Text>
-              <Text style={styles.issueMeta}>
-                Zone: {item.zone} · {item.logged_at.slice(0, 10)}
-                {item.photo_uri ? ' · 📷' : ''}
-                {item.ai_recommendation ? ' · 🤖 AI Rec' : ''}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        )}
+            <Text style={styles.logBtnPlus}>+</Text>
+            <Text style={styles.logBtnText}>Log</Text>
+          </Pressable>
+        }
       />
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => navigation.navigate('LogNewIssue', { lawnId })}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.fabText}>+ Log Issue</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-function StatusBadge({ status }: { status: IssueStatus }) {
-  return (
-    <View style={[styles.badge, { backgroundColor: STATUS_COLORS[status] + '22' }]}>
-      <Text style={[styles.badgeText, { color: STATUS_COLORS[status] }]}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </Text>
+      {issues.length === 0 ? (
+        <View style={styles.empty}>
+          <Sigil size={48} />
+          <Heading level={3} italic>No issues logged yet.</Heading>
+          <Text style={styles.emptySub}>
+            Tap "Log Issue" from the dashboard when something looks off.
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={issues}
+          keyExtractor={(i) => i.id}
+          contentContainerStyle={{ padding: SPACING.appX, paddingBottom: 120, gap: 10 }}
+          renderItem={({ item }) => (
+            <Card
+              padding={16}
+              onPress={() => overlayNav.navigate('CareCard', { lawnId, issueId: item.id })}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View
+                  style={[
+                    styles.iconTile,
+                    { backgroundColor: item.status === 'active' ? `${COLORS.amber}22` : `${COLORS.leafGreen}22` },
+                  ]}
+                >
+                  {item.status === 'active'
+                    ? <AlertTriangle />
+                    : <TreatedCheck />}
+                </View>
+                <View style={{ flex: 1, marginLeft: 14, marginRight: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.issueType}>{item.type}</Text>
+                    <StatusPill status={item.status} />
+                  </View>
+                  <Text style={styles.issueMeta}>
+                    Logged {formatLoggedAt(item.loggedAt)} · {item.zone}
+                  </Text>
+                </View>
+                <ChevronRight />
+              </View>
+            </Card>
+          )}
+        />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.parchment },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  filterBar: { flexDirection: 'row', padding: Spacing.sm, gap: Spacing.xs, backgroundColor: Colors.white, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  filterChip: { paddingVertical: 5, paddingHorizontal: Spacing.md, borderRadius: Radii.full, backgroundColor: Colors.surface },
-  filterChipActive: { backgroundColor: Colors.primary },
-  filterText: { fontSize: Typography.size.sm, color: Colors.textSecondary, fontWeight: Typography.weight.medium },
-  filterTextActive: { color: Colors.white, fontWeight: Typography.weight.bold },
-  list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: 100 },
-  issueCard: {
-    ...CardStyle, flexDirection: 'row', padding: 0, overflow: 'hidden',
-    borderWidth: 1, borderColor: Colors.border,
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.cream },
+
+  logBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.deepGreen,
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: RADII.pill,
   },
-  statusBar: { width: 5 },
-  issueContent: { flex: 1, padding: Spacing.md, gap: Spacing.xs },
-  issueRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  issueType: { fontSize: Typography.size.base, fontWeight: Typography.weight.semibold, color: Colors.textPrimary, textTransform: 'capitalize' },
-  issueDesc: { fontSize: Typography.size.sm, color: Colors.textSecondary, lineHeight: Typography.size.sm * Typography.leading.normal },
-  issueMeta: { fontSize: Typography.size.xs, color: Colors.textMuted },
-  badge: { paddingVertical: 2, paddingHorizontal: Spacing.sm, borderRadius: Radii.full },
-  badgeText: { fontSize: Typography.size.xs, fontWeight: Typography.weight.bold },
-  emptyState: { alignItems: 'center', paddingTop: Spacing['3xl'], gap: Spacing.md, paddingHorizontal: Spacing.xl },
-  emptyIcon: { fontSize: 56 },
-  emptyTitle: { fontSize: Typography.size.xl, fontWeight: Typography.weight.bold, color: Colors.textPrimary },
-  emptySub: { fontSize: Typography.size.base, color: Colors.textSecondary, textAlign: 'center' },
-  fab: {
-    position: 'absolute', bottom: Spacing.xl, right: Spacing.lg,
-    backgroundColor: Colors.primary, borderRadius: Radii.full,
-    paddingVertical: Spacing.md, paddingHorizontal: Spacing.xl,
-    shadowColor: Colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6,
+  logBtnPlus: { color: COLORS.cream, fontSize: 16, fontWeight: '600', marginRight: 4 },
+  logBtnText: { color: COLORS.cream, fontSize: 13, fontWeight: '600' },
+
+  iconTile: {
+    width: 44, height: 44, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
   },
-  fabText: { color: Colors.white, fontWeight: Typography.weight.bold, fontSize: Typography.size.base },
+
+  issueType: { ...TYPE.headingSM },
+  issueMeta: { ...TYPE.bodySoft, fontSize: 13, marginTop: 2 },
+
+  empty: { alignItems: 'center', paddingVertical: 60, paddingHorizontal: 20, gap: 14 },
+  emptySub: { ...TYPE.body, fontSize: 14, color: COLORS.inkSoft, textAlign: 'center', maxWidth: 240 },
 });

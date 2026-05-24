@@ -27,23 +27,30 @@ export default function OnboardingCompleteScreen({ route }: Props) {
   }, []);
 
   async function runSetup() {
+    let profile;
     try {
-      // 1. Create and persist the profile
+      // 1. Create and persist the profile (must succeed)
       setStep('saving');
-      const profile = createProfileFromDraft(draft);
+      profile = createProfileFromDraft(draft);
       await saveLawnProfile(profile);
       await setActiveLawnId(profile.lawn_id);
+    } catch (err) {
+      console.error('Onboarding setup error:', err);
+      setStep('error');
+      return;
+    }
 
-      // 2. Generate the maintenance plan (streamed)
-      setStep('generating');
+    // 2. Try to generate the AI maintenance plan. The Plan tab falls back to
+    //    the Sprint 2 seed calendar if this step fails, so we still proceed.
+    setStep('generating');
+    try {
       await generateMaintenancePlan(
         profile,
         (delta) => setPlanPreview((prev) => prev + delta),
         async (result) => {
-          // Attach the completed plan to the profile and re-save
-          profile.maintenance_plan = {
+          profile!.maintenance_plan = {
             generated_at: new Date().toISOString(),
-            profile_hash: profile.lawn_id,
+            profile_hash: profile!.lawn_id,
             annual_tasks: [],
             fertilization_schedule: [],
             watering_guidelines: '',
@@ -51,14 +58,13 @@ export default function OnboardingCompleteScreen({ route }: Props) {
             weed_and_pest_watch: '',
             raw_plan_markdown: result.plan_markdown,
           };
-          await saveLawnProfile(profile);
-          setStep('done');
+          await saveLawnProfile(profile!);
         },
       );
     } catch (err) {
-      console.error('Onboarding setup error:', err);
-      setStep('error');
+      console.warn('Plan generation skipped:', err);
     }
+    setStep('done');
   }
 
   useEffect(() => {

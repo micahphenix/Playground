@@ -130,10 +130,14 @@ export interface IssueLog {
   /** Local file URI, e.g. "file:///data/user/0/.../photos/issue_i1.jpg" */
   photo_uri?: string;
   /** Full AI-generated treatment recommendation */
+  /** Full AI-generated treatment recommendation. For Sprint 2 issues this is a
+   *  serialized CareCard prefixed with `__GG_CARE_V1__` (see issueModel.ts). */
   ai_recommendation?: string;
   status: IssueStatus;
   resolved_at?: string;
   treatment_notes?: string;
+  /** Sprint 2: whether the issue is pinned to the Dashboard to-do list. */
+  inTodo?: boolean;
 }
 
 // ── Notification Preferences ──────────────────────────────────────────────────
@@ -208,14 +212,7 @@ export type MainTabParamList = {
   Dashboard: { lawnId: string };
   MaintenancePlan: { lawnId: string };
   IssueLog: { lawnId: string };
-  LawnProfile: { lawnId: string };
   Settings: undefined;
-};
-
-export type IssuesStackParamList = {
-  IssueLog: { lawnId: string };
-  LogNewIssue: { lawnId: string };
-  IssueDetail: { lawnId: string; issueId: string };
 };
 
 export type RootParamList = {
