@@ -1,68 +1,36 @@
 {
   "expo": {
-    "name": "Grass Guru",
-    "slug": "grass-guru",
-    "version": "1.0.0",
+    "name": "Steward",
+    "slug": "body-steward",
+    "version": "0.1.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "scheme": "steward",
     "splash": {
-      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#2D5016"
+      "backgroundColor": "#F8F1E2"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.tovlabs.grassguru",
+      "bundleIdentifier": "com.bodysteward.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "Grass Guru uses your camera to identify your grass type.",
-        "NSPhotoLibraryUsageDescription": "Grass Guru accesses your photos to identify your grass type.",
-        "NSLocationWhenInUseUsageDescription": "Grass Guru uses your location to determine your climate zone and USDA hardiness zone for accurate lawn care recommendations."
+        "NSCameraUsageDescription": "Steward uses your camera to log meals from photos.",
+        "NSPhotoLibraryUsageDescription": "Steward reads meal photos from your library to log them.",
+        "NSMicrophoneUsageDescription": "Steward records short voice notes so the coach can transcribe and log them.",
+        "NSHealthShareUsageDescription": "Steward reads sleep, steps, and workouts from HealthKit so the morning briefing has context.",
+        "NSHealthUpdateUsageDescription": "Steward does not write to HealthKit."
       }
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#2D5016"
-      },
-      "package": "com.tovlabs.grassguru",
-      "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "RECEIVE_BOOT_COMPLETED",
-        "SCHEDULE_EXACT_ALARM"
-      ]
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
+      "package": "com.bodysteward.app",
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "RECORD_AUDIO"]
     },
     "plugins": [
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Grass Guru uses your camera to identify your grass type."
-        }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Grass Guru accesses your photos to identify your grass type."
-        }
-      ],
-      [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": "Grass Guru uses your location to provide accurate, region-specific lawn care recommendations."
-        }
-      ],
-      "expo-notifications"
+      ["expo-camera", { "cameraPermission": "Steward uses your camera to log meals from photos." }],
+      ["expo-image-picker", { "photosPermission": "Steward reads meal photos from your library to log them." }],
+      "expo-notifications",
+      "expo-font"
     ],
-    "extra": {
-      "eas": {
-        "projectId": "your-eas-project-id"
-      }
-    }
+    "extra": {}
   }
 }

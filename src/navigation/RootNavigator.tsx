@@ -1,58 +1,55 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// RootNavigator
-//
-// Top-level navigator. On mount, checks whether any lawn profiles exist:
-//   • No profiles → show Onboarding stack
-//   • Profiles exist → show Main tabs
-//
-// The Splash screen is shown while we check storage.
-// ─────────────────────────────────────────────────────────────────────────────
-
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useData } from '../data/DataContext';
+import { OnboardingScreen } from '../screens/onboarding/OnboardingScreen';
+import { MainTabs } from './MainTabs';
+import { ChatScreen } from '../screens/today/ChatScreen';
+import { PhotoConfirmModal } from '../screens/flows/PhotoConfirmModal';
+import { VoiceConfirmModal } from '../screens/flows/VoiceConfirmModal';
+import { ProfileUpdateModal } from '../screens/flows/ProfileUpdateModal';
+import { WeeklyRecapModal } from '../screens/memory/WeeklyRecapModal';
+import { GoalSwitcherModal } from '../screens/profile/GoalSwitcherModal';
+import { PatternDetailModal } from '../screens/flows/PatternDetailModal';
+import { SplashView } from '../screens/SplashView';
+import type { PhotoAnalysis, ParsedEntry } from '../ai/coach';
+import type { PatternFlag, WeeklyRecap } from '../data/types';
 
-import SplashScreen from '../screens/SplashScreen';
-import OnboardingNavigator from './OnboardingNavigator';
-import MainTabNavigator from './MainTabNavigator';
+export type RootStackParamList = {
+  Onboarding: undefined;
+  Main: undefined;
+  Chat: undefined;
+  PhotoConfirm: { photoUri: string; analysis: PhotoAnalysis };
+  VoiceConfirm: { transcript: string; durationSec: number; entries: ParsedEntry[] };
+  ProfileUpdate: { rawInput: string; proposals: { kind: 'limitation' | 'plan'; label: string; note?: string }[] };
+  PatternDetail: { pattern: PatternFlag };
+  WeeklyRecap: { recap: WeeklyRecap };
+  GoalSwitcher: undefined;
+};
 
-import { getActiveLawnId } from '../storage/lawnStorage';
-import { RootParamList } from '../types/lawn';
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
-const Stack = createNativeStackNavigator<RootParamList>();
-
-export default function RootNavigator() {
-  const [isReady, setIsReady] = useState(false);
-  const [hasProfile, setHasProfile] = useState(false);
-
-  useEffect(() => {
-    checkForExistingProfile();
-  }, []);
-
-  async function checkForExistingProfile() {
-    try {
-      const activeLawnId = await getActiveLawnId();
-      setHasProfile(activeLawnId !== null);
-    } catch {
-      setHasProfile(false);
-    } finally {
-      setIsReady(true);
-    }
-  }
-
-  if (!isReady) {
-    return (
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Splash" component={SplashScreen} />
-      </Stack.Navigator>
-    );
-  }
-
+export function RootNavigator() {
+  const { ready, onboarded } = useData();
+  if (!ready) return <SplashView />;
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {hasProfile ? (
-        <Stack.Screen name="Main" component={MainTabNavigator} />
+    <Stack.Navigator
+      screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#F8F1E2' } }}
+    >
+      {!onboarded ? (
+        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       ) : (
-        <Stack.Screen name="Onboarding" component={OnboardingNavigator} />
+        <>
+          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen name="Chat" component={ChatScreen} options={{ presentation: 'card' }} />
+          <Stack.Group screenOptions={{ presentation: 'modal' }}>
+            <Stack.Screen name="PhotoConfirm" component={PhotoConfirmModal} />
+            <Stack.Screen name="VoiceConfirm" component={VoiceConfirmModal} />
+            <Stack.Screen name="ProfileUpdate" component={ProfileUpdateModal} />
+            <Stack.Screen name="PatternDetail" component={PatternDetailModal} />
+            <Stack.Screen name="WeeklyRecap" component={WeeklyRecapModal} />
+            <Stack.Screen name="GoalSwitcher" component={GoalSwitcherModal} />
+          </Stack.Group>
+        </>
       )}
     </Stack.Navigator>
   );
