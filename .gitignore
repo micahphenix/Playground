@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Expo / Metro
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# Native
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Build artifacts
+*.log
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
