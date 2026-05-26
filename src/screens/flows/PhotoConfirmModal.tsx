@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TextInput, Pressable } from 'react-native';
+import { View, Text, ScrollView, TextInput, Pressable, Alert } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { v4 as uuid } from 'uuid';
 import Svg, { Path } from 'react-native-svg';
@@ -23,6 +23,28 @@ export function PhotoConfirmModal() {
   const [total, setTotal] = useState(analysis.total);
   const [editing, setEditing] = useState<EditableField | null>(null);
   const [saving, setSaving] = useState(false);
+  const [items, setItems] = useState(analysis.items);
+
+  function removeItem(idx: number) {
+    const removed = items[idx];
+    if (!removed) return;
+    Alert.alert('Remove item?', `${removed.name} — ${removed.kcal} kcal · ${removed.protein_g}g P`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => {
+          setItems(arr => arr.filter((_, i) => i !== idx));
+          setTotal(t => ({
+            kcal: Math.max(0, t.kcal - removed.kcal),
+            protein_g: Math.max(0, t.protein_g - removed.protein_g),
+            carb_g: Math.max(0, t.carb_g - removed.carb_g),
+            fat_g: Math.max(0, t.fat_g - removed.fat_g),
+          }));
+        },
+      },
+    ]);
+  }
 
   const confidencePct = Math.round((analysis.confidence ?? 0) * 100);
   const confTone = confidencePct >= 80 ? 'good' : confidencePct >= 60 ? 'warn' : 'warn';
@@ -35,7 +57,7 @@ export function PhotoConfirmModal() {
       title,
       detail: analysis.description,
       macros: total,
-      items: analysis.items,
+      items,
       source: 'photo',
       photoUri,
       confidence: analysis.confidence,
@@ -113,21 +135,23 @@ export function PhotoConfirmModal() {
           Estimates. Tap any value to adjust before saving.
         </Text>
 
-        {analysis.items.length > 0 && (
+        {items.length > 0 && (
           <View style={{ marginTop: 14 }}>
             <Label style={{ marginBottom: 8, paddingLeft: 4 }}>Items</Label>
             <Card style={{ overflow: 'hidden' }}>
-              {analysis.items.map((it, i, arr) => (
-                <View
+              {items.map((it, i, arr) => (
+                <Pressable
                   key={i}
-                  style={{
+                  onLongPress={() => removeItem(i)}
+                  style={({ pressed }) => ({
                     flexDirection: 'row',
                     padding: 12,
                     alignItems: 'center',
                     gap: 8,
                     borderBottomWidth: i < arr.length - 1 ? 0.5 : 0,
                     borderBottomColor: colors.line,
-                  }}
+                    backgroundColor: pressed ? colors.surfaceAlt : 'transparent',
+                  })}
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontFamily: fonts.serif, fontSize: 14, color: colors.ink }}>{it.name}</Text>
@@ -136,9 +160,12 @@ export function PhotoConfirmModal() {
                   <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: colors.body }}>
                     {it.kcal} · {it.protein_g}g P
                   </Text>
-                </View>
+                </Pressable>
               ))}
             </Card>
+            <Text style={{ marginTop: 6, paddingLeft: 4, fontFamily: fonts.serifRegItalic, fontSize: 11.5, color: colors.muted }}>
+              Long-press an item to remove it from the meal.
+            </Text>
           </View>
         )}
       </ScrollView>

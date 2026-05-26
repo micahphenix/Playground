@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -68,6 +68,24 @@ export function TodayScreen() {
 
   const todays = useMemo(() => sumToday(log), [log]);
   const dateLabel = useMemo(() => formatDateTitle(new Date()), []);
+  const autoRegenRan = useRef(false);
+
+  // Foreground EOD substitute: if the briefing is from a previous day, write
+  // a new one on first open today. A real background task (expo-background-task)
+  // would do this overnight, but Expo Go can't host one — this keeps the
+  // briefing fresh in the meantime.
+  useEffect(() => {
+    if (autoRegenRan.current) return;
+    if (!profile || !hasApiKey()) return;
+    if (!briefing) return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (briefing.forDate === today) return;
+    autoRegenRan.current = true;
+    regenerate();
+    // regenerate's dependencies change on every render of TodayScreen, but the
+    // ref gate above ensures we only fire once per mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, briefing]);
 
   async function sendText() {
     if (!composerText.trim() || !profile) return;
@@ -178,42 +196,45 @@ export function TodayScreen() {
             }}
           />
         ) : (
-          <View style={{ paddingHorizontal: 16, paddingBottom: 14, flexDirection: 'row', gap: 8 }}>
-            {briefing && (
+          <>
+            <DailySummary log={log} />
+            <View style={{ paddingHorizontal: 16, paddingBottom: 14, flexDirection: 'row', gap: 8 }}>
+              {briefing && (
+                <Pressable
+                  onPress={restoreBriefing}
+                  style={({ pressed }) => ({
+                    alignSelf: 'flex-start',
+                    backgroundColor: colors.surfaceAlt,
+                    borderRadius: radii.pill,
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                  })}
+                >
+                  <Text style={{ fontFamily: fonts.sansBold, fontSize: 11, color: colors.body, letterSpacing: 0.6 }}>
+                    ↑ BRIEFING
+                  </Text>
+                </Pressable>
+              )}
               <Pressable
-                onPress={restoreBriefing}
+                onPress={regenerate}
+                disabled={regenerating}
                 style={({ pressed }) => ({
                   alignSelf: 'flex-start',
-                  backgroundColor: colors.surfaceAlt,
+                  backgroundColor: colors.accentSoft,
                   borderRadius: radii.pill,
                   paddingHorizontal: 12,
                   paddingVertical: 7,
+                  opacity: regenerating ? 0.5 : 1,
                   transform: [{ scale: pressed ? 0.98 : 1 }],
                 })}
               >
-                <Text style={{ fontFamily: fonts.sansBold, fontSize: 11, color: colors.body, letterSpacing: 0.6 }}>
-                  ↑ BRIEFING
+                <Text style={{ fontFamily: fonts.sansBold, fontSize: 11, color: colors.accent, letterSpacing: 0.6 }}>
+                  {regenerating ? 'WRITING…' : '↻ NEW BRIEFING'}
                 </Text>
               </Pressable>
-            )}
-            <Pressable
-              onPress={regenerate}
-              disabled={regenerating}
-              style={({ pressed }) => ({
-                alignSelf: 'flex-start',
-                backgroundColor: colors.accentSoft,
-                borderRadius: radii.pill,
-                paddingHorizontal: 12,
-                paddingVertical: 7,
-                opacity: regenerating ? 0.5 : 1,
-                transform: [{ scale: pressed ? 0.98 : 1 }],
-              })}
-            >
-              <Text style={{ fontFamily: fonts.sansBold, fontSize: 11, color: colors.accent, letterSpacing: 0.6 }}>
-                {regenerating ? 'WRITING…' : '↻ NEW BRIEFING'}
-              </Text>
-            </Pressable>
-          </View>
+            </View>
+          </>
         )}
 
         <RingsRow protein={todays.protein} calories={todays.kcal} targetP={profile?.protein_g_target ?? 185} targetC={profile?.calories_target ?? 2600} />
@@ -295,6 +316,40 @@ function formatDateTitle(d: Date) {
   const day = d.toLocaleDateString(undefined, { weekday: 'long' });
   const month = d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' }).toUpperCase();
   return { day: `${day}.`, month };
+}
+
+function DailySummary({ log }: { log: LogEntry[] }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const todays = log.filter(e => e.createdAt.slice(0, 10) === today);
+  const meals = todays.filter(e => e.kind === 'meal').length;
+  const workouts = todays.filter(e => e.kind === 'workout').length;
+  const recovery = todays.filter(e => e.kind === 'recovery');
+  return (
+    <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
+      <Card style={{ padding: 14 }}>
+        <Label>Today so far</Label>
+        <Text
+          style={{
+            fontFamily: fonts.serif,
+            fontSize: 16,
+            color: colors.ink,
+            marginTop: 8,
+            lineHeight: 22,
+          }}
+        >
+          {summarize(meals, workouts, recovery.length)}
+        </Text>
+      </Card>
+    </View>
+  );
+}
+function summarize(meals: number, workouts: number, recovery: number): string {
+  if (meals === 0 && workouts === 0 && recovery === 0) return "Nothing logged yet today — the day is still wide open.";
+  const parts: string[] = [];
+  if (meals) parts.push(`${meals} meal${meals === 1 ? '' : 's'} logged`);
+  if (workouts) parts.push(`${workouts} workout${workouts === 1 ? '' : 's'}`);
+  if (recovery) parts.push(`${recovery} recovery note${recovery === 1 ? '' : 's'}`);
+  return parts.join(' · ') + '.';
 }
 
 function BriefingCard({
@@ -462,9 +517,7 @@ function LogRow({ entry, last, onLongPress }: { entry: LogEntry; last: boolean; 
         : colors.accent;
   const macros = entry.macros;
   const date = new Date(entry.createdAt);
-  const when = sameDay(date, new Date())
-    ? date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-    : `Yesterday ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+  const when = formatWhen(date);
   return (
     <Pressable
       onLongPress={onLongPress}
@@ -492,6 +545,15 @@ function LogRow({ entry, last, onLongPress }: { entry: LogEntry; last: boolean; 
   );
 }
 
+function formatWhen(d: Date): string {
+  const now = new Date();
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (sameDay(d, now)) return time;
+  const yest = new Date(now);
+  yest.setDate(yest.getDate() - 1);
+  if (sameDay(d, yest)) return `Yesterday ${time}`;
+  return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${time}`;
+}
 function sameDay(a: Date, b: Date) {
   return a.toDateString() === b.toDateString();
 }
