@@ -9,6 +9,7 @@ import { VoiceConfirmModal } from '../screens/flows/VoiceConfirmModal';
 import { ProfileUpdateModal } from '../screens/flows/ProfileUpdateModal';
 import { WeeklyRecapModal } from '../screens/memory/WeeklyRecapModal';
 import { GoalSwitcherModal } from '../screens/profile/GoalSwitcherModal';
+import { WatchPreviewModal } from '../screens/profile/WatchPreviewModal';
 import { PatternDetailModal } from '../screens/flows/PatternDetailModal';
 import { QuickEntryModal } from '../screens/flows/QuickEntryModal';
 import { SplashView } from '../screens/SplashView';
@@ -26,6 +27,7 @@ export type RootStackParamList = {
   WeeklyRecap: { recap: WeeklyRecap };
   GoalSwitcher: undefined;
   QuickEntry: { kind: 'recovery' | 'inbody' };
+  WatchPreview: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -51,6 +53,7 @@ export function RootNavigator() {
             <Stack.Screen name="WeeklyRecap" component={WeeklyRecapModal} />
             <Stack.Screen name="GoalSwitcher" component={GoalSwitcherModal} />
             <Stack.Screen name="QuickEntry" component={QuickEntryModal} />
+            <Stack.Screen name="WatchPreview" component={WatchPreviewModal} />
           </Stack.Group>
         </>
       )}

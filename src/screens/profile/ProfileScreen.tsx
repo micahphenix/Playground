@@ -66,7 +66,12 @@ export function ProfileScreen() {
           on: true,
         },
         { title: 'Garmin', detail: 'Coming in v0.2', kind: 'toggle', on: false, disabled: true },
-        { title: 'Watch widget', detail: "Today's rings on the wrist", kind: 'toggle', on: true },
+        {
+          title: 'Watch widget',
+          detail: "Today's rings on the wrist · preview",
+          kind: 'chev',
+          onPress: () => nav.navigate('WatchPreview'),
+        },
       ],
     },
     {
