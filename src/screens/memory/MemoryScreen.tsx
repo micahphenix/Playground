@@ -10,7 +10,7 @@ import { Card } from '../../components/Card';
 import { Label } from '../../components/Label';
 import { PillButton } from '../../components/PillButton';
 import { useData } from '../../data/DataContext';
-import { detectPatterns, hasApiKey } from '../../ai/coach';
+import { detectPatterns, generateRecap, hasApiKey } from '../../ai/coach';
 import type { MemoryKind, PatternFlag, WeeklyRecap } from '../../data/types';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 
@@ -20,11 +20,50 @@ type FactFilter = 'all' | MemoryKind;
 
 export function MemoryScreen() {
   const nav = useNavigation<Nav>();
-  const { memory, patterns, recaps, profile, log, upsertPattern } = useData();
+  const { memory, patterns, recaps, profile, log, upsertPattern, removeMemory, addRecap } = useData();
   const [scanning, setScanning] = useState(false);
+  const [generatingRecap, setGeneratingRecap] = useState(false);
   const [filter, setFilter] = useState<FactFilter>('all');
 
   const filteredMemory = filter === 'all' ? memory : memory.filter(m => m.kind === filter);
+
+  async function runRecap() {
+    if (!profile) return;
+    if (!hasApiKey()) {
+      Alert.alert('Coach offline', 'Set EXPO_PUBLIC_ANTHROPIC_API_KEY to write recaps.');
+      return;
+    }
+    setGeneratingRecap(true);
+    try {
+      const draft = await generateRecap({
+        profile,
+        recentLog: log,
+        openPatterns: patterns.filter(p => p.status === 'open'),
+      });
+      const now = new Date().toISOString();
+      await addRecap({
+        id: uuid(),
+        weekStart: draft.weekStart,
+        headline: draft.headline,
+        stats: draft.stats,
+        whatWorked: draft.whatWorked,
+        whatWasHard: draft.whatWasHard,
+        nextFocus: draft.nextFocus,
+        createdAt: now,
+      });
+    } catch (e: unknown) {
+      Alert.alert("Couldn't write the recap", e instanceof Error ? e.message : 'Try again.');
+    } finally {
+      setGeneratingRecap(false);
+    }
+  }
+
+  function confirmRemoveMemory(id: string, headline: string) {
+    Alert.alert('Forget this?', `The coach will stop holding "${headline}".`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Forget', style: 'destructive', onPress: () => removeMemory(id) },
+    ]);
+  }
 
   async function runScan() {
     if (!profile) return;
@@ -118,15 +157,17 @@ export function MemoryScreen() {
           </View>
           <Card style={{ overflow: 'hidden' }}>
             {filteredMemory.map((row, i, arr) => (
-              <View
+              <Pressable
                 key={row.id}
-                style={{
+                onLongPress={() => confirmRemoveMemory(row.id, row.headline)}
+                style={({ pressed }) => ({
                   flexDirection: 'row',
                   padding: 14,
                   alignItems: 'center',
                   borderBottomWidth: i < arr.length - 1 ? 0.5 : 0,
                   borderBottomColor: colors.line,
-                }}
+                  backgroundColor: pressed ? colors.surfaceAlt : 'transparent',
+                })}
               >
                 <Text style={{ flex: 1, fontFamily: fonts.serif, fontSize: 14, color: colors.ink }}>
                   {row.headline}
@@ -134,12 +175,15 @@ export function MemoryScreen() {
                 <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.body, textAlign: 'right' }}>
                   {row.detail}
                 </Text>
-              </View>
+              </Pressable>
             ))}
             {filteredMemory.length === 0 && (
               <EmptyNote text={filter === 'all' ? 'Nothing remembered yet.' : `Nothing under ${filter} yet.`} />
             )}
           </Card>
+          <Text style={{ marginTop: 6, paddingLeft: 4, fontFamily: fonts.serifRegItalic, fontSize: 11.5, color: colors.muted }}>
+            Long-press a fact to forget it.
+          </Text>
         </Section>
 
         <Section title="Weekly recaps">
@@ -152,8 +196,16 @@ export function MemoryScreen() {
                 onPress={() => nav.navigate('WeeklyRecap', { recap: r })}
               />
             ))}
-            {recaps.length === 0 && <EmptyNote text="No recaps yet — check in next week." />}
+            {recaps.length === 0 && <EmptyNote text="No recaps yet — write one when the week is done." />}
           </Card>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
+            <PillButton
+              label={generatingRecap ? 'Writing…' : 'Write this week’s recap'}
+              kind="alt"
+              onPress={runRecap}
+              disabled={generatingRecap}
+            />
+          </View>
         </Section>
       </ScrollView>
     </View>

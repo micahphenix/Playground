@@ -89,6 +89,10 @@ export class LocalRepository implements Repository {
     const all = await get<MemoryItem[]>(K.memory, []);
     await put(K.memory, [item, ...all]);
   }
+  async removeMemory(id: string): Promise<void> {
+    const all = await get<MemoryItem[]>(K.memory, []);
+    await put(K.memory, all.filter(m => m.id !== id));
+  }
 
   async listPatterns(): Promise<PatternFlag[]> {
     return get<PatternFlag[]>(K.patterns, []);
@@ -105,7 +109,12 @@ export class LocalRepository implements Repository {
   }
 
   async listRecaps(): Promise<WeeklyRecap[]> {
-    return get<WeeklyRecap[]>(K.recaps, []);
+    const all = await get<WeeklyRecap[]>(K.recaps, []);
+    return [...all].sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1));
+  }
+  async addRecap(r: WeeklyRecap): Promise<void> {
+    const all = await get<WeeklyRecap[]>(K.recaps, []);
+    await put(K.recaps, [r, ...all]);
   }
 
   async getBriefing(): Promise<Briefing | null> {

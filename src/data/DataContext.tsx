@@ -19,7 +19,9 @@ interface DataState {
   updateLog: (id: string, patch: Partial<LogEntry>) => Promise<void>;
   deleteLog: (id: string) => Promise<void>;
   addMemory: (item: MemoryItem) => Promise<void>;
+  removeMemory: (id: string) => Promise<void>;
   upsertPattern: (p: PatternFlag) => Promise<void>;
+  addRecap: (r: WeeklyRecap) => Promise<void>;
   dismissBriefing: () => Promise<void>;
   restoreBriefing: () => Promise<void>;
   setBriefing: (b: Briefing | null) => Promise<void>;
@@ -102,9 +104,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         await localRepo.addMemory(item);
         setMemory(await localRepo.listMemory());
       },
+      async removeMemory(id) {
+        await localRepo.removeMemory(id);
+        setMemory(await localRepo.listMemory());
+      },
       async upsertPattern(p) {
         await localRepo.upsertPattern(p);
         setPatterns(await localRepo.listPatterns());
+      },
+      async addRecap(r) {
+        await localRepo.addRecap(r);
+        setRecaps(await localRepo.listRecaps());
       },
       async dismissBriefing() {
         if (!briefing) return;

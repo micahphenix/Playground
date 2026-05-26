@@ -293,6 +293,52 @@ Output ONLY valid JSON:
 
 If nothing crosses the threshold, return { "patterns": [] }. Don't manufacture patterns to fill the array.`;
 
+// 6) Weekly recap generation — synthesizes the week from log + patterns +
+// existing memory into a serif lead + stat grid + lists + next-focus.
+export interface RecapDraft {
+  weekStart: string;
+  headline: string;
+  stats: { label: string; value: string; sub: string; tone: 'accent' | 'accentAlt' | 'warn' | 'good' }[];
+  whatWorked: string[];
+  whatWasHard: string[];
+  nextFocus: string;
+}
+
+const RECAP_PROMPT = `Synthesize a weekly recap for the user. Look at the last 7 days of log
+entries, open patterns, and the active goal. Tone: stewardship — honest about
+what didn't go well, generous about what did, never shaming.
+
+Output ONLY valid JSON:
+{
+  "weekStart": "YYYY-MM-DD (Monday of the week being recapped)",
+  "headline": "one quoted serif lead, 1-2 sentences — interpret, don't list",
+  "stats": [
+    { "label": "Protein hit", "value": "4/7", "sub": "days at target", "tone": "accent" | "accentAlt" | "warn" | "good" }
+    // 3-4 stats total. value is short. sub is one-line context.
+  ],
+  "whatWorked": ["..."],    // 2-4 items
+  "whatWasHard": ["..."],   // 1-3 items, honest
+  "nextFocus": "2-3 sentences — what to weight next week"
+}
+
+If there isn't enough data for a real recap, say so in the headline and keep
+the lists short.`;
+
+export async function generateRecap(ctx: CoachContext): Promise<RecapDraft> {
+  const res = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 900,
+    system: buildSystemPrompt(ctx) + '\n\n' + RECAP_PROMPT,
+    messages: [{ role: 'user', content: "Recap the past week." }],
+  });
+  const text = res.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map(b => b.text)
+    .join('')
+    .trim();
+  return parseJsonish<RecapDraft>(text);
+}
+
 export async function detectPatterns(ctx: CoachContext): Promise<PatternCandidate[]> {
   const res = await getClient().messages.create({
     model: MODEL,

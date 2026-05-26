@@ -27,11 +27,13 @@ export interface Repository {
   // Memory + patterns + recaps
   listMemory(): Promise<MemoryItem[]>;
   addMemory(item: MemoryItem): Promise<void>;
+  removeMemory(id: string): Promise<void>;
 
   listPatterns(): Promise<PatternFlag[]>;
   upsertPattern(p: PatternFlag): Promise<void>;
 
   listRecaps(): Promise<WeeklyRecap[]>;
+  addRecap(r: WeeklyRecap): Promise<void>;
 
   // Today's briefing
   getBriefing(): Promise<Briefing | null>;

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { v4 as uuid } from 'uuid';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
@@ -30,7 +31,7 @@ const GOAL_LABEL: Record<string, string> = {
 
 export function TodayScreen() {
   const nav = useNavigation<Nav>();
-  const { profile, log, briefing, dismissBriefing, restoreBriefing, setBriefing, patterns } = useData();
+  const { profile, log, briefing, dismissBriefing, restoreBriefing, setBriefing, patterns, deleteLog, addMemory } = useData();
   const [composerText, setComposerText] = useState('');
   const [working, setWorking] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -165,6 +166,16 @@ export function TodayScreen() {
             onDismiss={dismissBriefing}
             onRegenerate={regenerate}
             regenerating={regenerating}
+            onAction={async (label) => {
+              await addMemory({
+                id: uuid(),
+                kind: 'decision',
+                headline: `Picked "${label}"`,
+                detail: `Today's briefing: ${briefing.headline.replace(/\{\{em:|\}\}/g, '')}`,
+                createdAt: new Date().toISOString(),
+              });
+              await dismissBriefing();
+            }}
           />
         ) : (
           <View style={{ paddingHorizontal: 16, paddingBottom: 14, flexDirection: 'row', gap: 8 }}>
@@ -211,7 +222,17 @@ export function TodayScreen() {
           <Label style={{ marginBottom: 8, paddingLeft: 4 }}>Recent</Label>
           <Card raised style={{ overflow: 'hidden' }}>
             {log.slice(0, 6).map((row, i, arr) => (
-              <LogRow key={row.id} entry={row} last={i === arr.length - 1} />
+              <LogRow
+                key={row.id}
+                entry={row}
+                last={i === arr.length - 1}
+                onLongPress={() =>
+                  Alert.alert('Remove from log?', `"${row.title}"`, [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Remove', style: 'destructive', onPress: () => deleteLog(row.id) },
+                  ])
+                }
+              />
             ))}
             {log.length === 0 && (
               <View style={{ padding: 18, alignItems: 'center' }}>
@@ -284,6 +305,7 @@ function BriefingCard({
   onDismiss,
   onRegenerate,
   regenerating,
+  onAction,
 }: {
   headline: string;
   body: string;
@@ -292,6 +314,7 @@ function BriefingCard({
   onDismiss: () => void;
   onRegenerate: () => void;
   regenerating: boolean;
+  onAction: (label: string) => void;
 }) {
   return (
     <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
@@ -340,7 +363,7 @@ function BriefingCard({
         </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
           {actions.map((a, i) => (
-            <PillButton key={i} label={a.label} kind={a.kind} />
+            <PillButton key={i} label={a.label} kind={a.kind} onPress={() => onAction(a.label)} />
           ))}
         </View>
       </Card>
@@ -430,7 +453,7 @@ function Stat({
   );
 }
 
-function LogRow({ entry, last }: { entry: LogEntry; last: boolean }) {
+function LogRow({ entry, last, onLongPress }: { entry: LogEntry; last: boolean; onLongPress: () => void }) {
   const tint =
     entry.kind === 'recovery'
       ? colors.good
@@ -443,15 +466,17 @@ function LogRow({ entry, last }: { entry: LogEntry; last: boolean }) {
     ? date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
     : `Yesterday ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
   return (
-    <View
-      style={{
+    <Pressable
+      onLongPress={onLongPress}
+      style={({ pressed }) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
         padding: 14,
         borderBottomWidth: last ? 0 : 0.5,
         borderBottomColor: colors.line,
-      }}
+        backgroundColor: pressed ? colors.surfaceAlt : 'transparent',
+      })}
     >
       <View style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: tint }} />
       <View style={{ flex: 1 }}>
@@ -463,7 +488,7 @@ function LogRow({ entry, last }: { entry: LogEntry; last: boolean }) {
           {macros.kcal} · {macros.protein_g}g P
         </Text>
       )}
-    </View>
+    </Pressable>
   );
 }
 

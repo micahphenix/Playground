@@ -60,6 +60,9 @@ export class SupabaseRepository implements Repository {
   addMemory(_: MemoryItem): Promise<void> {
     return this.notWired();
   }
+  removeMemory(_: string): Promise<void> {
+    return this.notWired();
+  }
   listPatterns(): Promise<PatternFlag[]> {
     return this.notWired();
   }
@@ -67,6 +70,9 @@ export class SupabaseRepository implements Repository {
     return this.notWired();
   }
   listRecaps(): Promise<WeeklyRecap[]> {
+    return this.notWired();
+  }
+  addRecap(_: WeeklyRecap): Promise<void> {
     return this.notWired();
   }
   getBriefing(): Promise<Briefing | null> {
