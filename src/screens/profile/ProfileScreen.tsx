@@ -93,6 +93,23 @@ export function ProfileScreen() {
       ],
     },
     {
+      title: 'Quick entry',
+      rows: [
+        {
+          title: 'Recovery check-in',
+          detail: 'Sleep, soreness, mood — manual',
+          kind: 'chev',
+          onPress: () => nav.navigate('QuickEntry', { kind: 'recovery' }),
+        },
+        {
+          title: 'InBody scan',
+          detail: 'Weight, body fat, skeletal muscle mass',
+          kind: 'chev',
+          onPress: () => nav.navigate('QuickEntry', { kind: 'inbody' }),
+        },
+      ],
+    },
+    {
       title: 'Constraints',
       rows: profile.constraints.map(c => ({ title: c.split('—')[0]?.trim() ?? c, detail: c.split('—').slice(1).join('—').trim() || 'Hard constraint', kind: 'chev' })),
     },

@@ -11,15 +11,20 @@ import { Label } from '../../components/Label';
 import { PillButton } from '../../components/PillButton';
 import { useData } from '../../data/DataContext';
 import { detectPatterns, hasApiKey } from '../../ai/coach';
-import type { PatternFlag, WeeklyRecap } from '../../data/types';
+import type { MemoryKind, PatternFlag, WeeklyRecap } from '../../data/types';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+type FactFilter = 'all' | MemoryKind;
 
 export function MemoryScreen() {
   const nav = useNavigation<Nav>();
   const { memory, patterns, recaps, profile, log, upsertPattern } = useData();
   const [scanning, setScanning] = useState(false);
+  const [filter, setFilter] = useState<FactFilter>('all');
+
+  const filteredMemory = filter === 'all' ? memory : memory.filter(m => m.kind === filter);
 
   async function runScan() {
     if (!profile) return;
@@ -79,8 +84,40 @@ export function MemoryScreen() {
         </Section>
 
         <Section title="Facts">
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+            {(['all', 'fact', 'decision', 'pattern', 'recap', 'goal-change'] as FactFilter[]).map(f => {
+              const on = filter === f;
+              return (
+                <Pressable
+                  key={f}
+                  onPress={() => setFilter(f)}
+                  style={({ pressed }) => ({
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    backgroundColor: on ? colors.ink : colors.surface,
+                    borderWidth: 0.5,
+                    borderColor: on ? colors.ink : colors.line,
+                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                  })}
+                >
+                  <Text
+                    style={{
+                      fontFamily: fonts.sansBold,
+                      fontSize: 11,
+                      color: on ? colors.surface : colors.body,
+                      letterSpacing: 0.2,
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {f === 'all' ? 'All' : f === 'goal-change' ? 'Goal changes' : f}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
           <Card style={{ overflow: 'hidden' }}>
-            {memory.map((row, i, arr) => (
+            {filteredMemory.map((row, i, arr) => (
               <View
                 key={row.id}
                 style={{
@@ -99,7 +136,9 @@ export function MemoryScreen() {
                 </Text>
               </View>
             ))}
-            {memory.length === 0 && <EmptyNote text="Nothing remembered yet." />}
+            {filteredMemory.length === 0 && (
+              <EmptyNote text={filter === 'all' ? 'Nothing remembered yet.' : `Nothing under ${filter} yet.`} />
+            )}
           </Card>
         </Section>
 
