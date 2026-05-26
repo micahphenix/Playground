@@ -155,6 +155,67 @@ export async function parseFreeform(raw: string, ctx: CoachContext): Promise<Par
   return parseJsonish<ParseResult>(text);
 }
 
+// 3b) Interpret — single call that decides whether the user logged something,
+// asked a question, or both. Used by the chat surface so users don't have to
+// pick a mode.
+export interface InterpretResult {
+  // Loggable entries the coach extracted. Empty for pure conversation.
+  entries: ParsedEntry[];
+  // Conversational reply. Always present.
+  reply: string;
+  // Whether the user mentioned something profile-affecting (injury, plan change).
+  // Captured inside entries[].proposedLimitation; surfaced separately here for
+  // routing the ProfileUpdateModal.
+  hasProfileProposal: boolean;
+}
+
+const INTERPRET_PROMPT = `Read what the user just said. Decide what it is and respond accordingly.
+
+Output ONLY valid JSON, this exact shape:
+
+{
+  "reply": "your conversational response — 2-4 sentences, stewardship tone, no headers, no bullets. If they logged something, briefly acknowledge it.",
+  "entries": [
+    // ONE entry per concrete thing they logged. Empty array if they only asked a question.
+    {
+      "kind": "meal" | "workout" | "recovery" | "note",
+      "title": "string",
+      "detail": "string (optional)",
+      "macros": { "kcal": n, "protein_g": n, "carb_g": n, "fat_g": n },
+      "workout": { "type": "...", "durationMin": n, "rpe": n },
+      "recovery": { "sleepHrs": n, "soreness": "...", "mood": "..." },
+      "proposedLimitation": { "label": "...", "note": "..." }
+    }
+  ]
+}
+
+Rules:
+- If they're just asking a question, leave entries: [].
+- If they logged a meal/workout/recovery, include it as an entry. Macros are estimates — say so in reply.
+- If they mentioned an injury or limitation ("tweaked my calf", "knee's grumbling"), put it in entries[].proposedLimitation.
+- Don't ask clarifying questions in reply unless something critical is missing.`;
+
+export async function interpret(raw: string, ctx: CoachContext): Promise<InterpretResult> {
+  const res = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 800,
+    system: buildSystemPrompt(ctx) + '\n\n' + INTERPRET_PROMPT,
+    messages: [{ role: 'user', content: raw }],
+  });
+  const text = res.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map(b => b.text)
+    .join('')
+    .trim();
+  const parsed = parseJsonish<{ entries?: ParsedEntry[]; reply?: string }>(text);
+  const entries = parsed.entries ?? [];
+  return {
+    entries,
+    reply: parsed.reply ?? "I'm here.",
+    hasProfileProposal: entries.some(e => !!e.proposedLimitation),
+  };
+}
+
 // 4) Morning briefing — interprets yesterday + recent context into a serif lead.
 export interface BriefingDraft {
   headline: string; // may include {{em:...}} for inline italic accent
@@ -197,4 +258,53 @@ function parseJsonish<T>(text: string): T {
   const last = s.lastIndexOf('}');
   if (first >= 0 && last > first) s = s.slice(first, last + 1);
   return JSON.parse(s) as T;
+}
+
+// 5) LLM-driven pattern scan. Looks across recent logs + open patterns for
+// signals worth surfacing. Returns flag *candidates* — the UI decides whether
+// to persist them.
+export interface PatternCandidate {
+  topic: string;
+  summary: string;
+  mentions: { at: string; context: string }[];
+  tone: 'accent' | 'accentAlt' | 'warn';
+}
+
+const PATTERN_PROMPT = `Look across the user's recent log and current open patterns. Identify
+patterns the coach should raise IF they cross the threshold of "worth flagging."
+
+A pattern is worth flagging when ONE of these is true:
+- Same complaint appears 3+ times in 3 weeks
+- A target is missed 4+ days in a row
+- A sequence of bad recovery nights (5+ under 6 hours)
+- A constraint is being approached repeatedly (e.g. "knee" mentions)
+
+Output ONLY valid JSON:
+{
+  "patterns": [
+    {
+      "topic": "right calf · mention frequency",
+      "summary": "4 mentions in 3 weeks · avg mile 15",
+      "mentions": [{"at":"May 22","context":"…"}],
+      "tone": "accent" | "accentAlt" | "warn"
+    }
+  ]
+}
+
+If nothing crosses the threshold, return { "patterns": [] }. Don't manufacture patterns to fill the array.`;
+
+export async function detectPatterns(ctx: CoachContext): Promise<PatternCandidate[]> {
+  const res = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 600,
+    system: buildSystemPrompt(ctx) + '\n\n' + PATTERN_PROMPT,
+    messages: [{ role: 'user', content: 'Scan for patterns.' }],
+  });
+  const text = res.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map(b => b.text)
+    .join('')
+    .trim();
+  const parsed = parseJsonish<{ patterns?: PatternCandidate[] }>(text);
+  return parsed.patterns ?? [];
 }

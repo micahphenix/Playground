@@ -76,8 +76,11 @@ export function ProfileScreen() {
         { title: 'Tone', detail: 'Warm · honest · stewardship', kind: 'chev' },
         {
           title: 'Morning briefing',
-          detail: `Daily · ${profile.notifications.morningBriefingTime}`,
-          kind: 'chev',
+          detail: profile.notifications.enabled
+            ? `Daily · ${profile.notifications.morningBriefingTime}`
+            : 'Off',
+          kind: 'toggle',
+          on: profile.notifications.enabled,
           onPress: () =>
             updateProfile({
               notifications: {

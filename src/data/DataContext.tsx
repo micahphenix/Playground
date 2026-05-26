@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { localRepo } from './LocalRepository';
+import { scheduleMorningBriefing } from '../services/notifications';
 import type { Briefing, LogEntry, MemoryItem, PatternFlag, Profile, WeeklyRecap } from './types';
 
 interface DataState {
@@ -21,6 +22,7 @@ interface DataState {
   upsertPattern: (p: PatternFlag) => Promise<void>;
   dismissBriefing: () => Promise<void>;
   restoreBriefing: () => Promise<void>;
+  setBriefing: (b: Briefing | null) => Promise<void>;
   exportAll: () => Promise<unknown>;
 }
 
@@ -54,6 +56,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setPatterns(pat);
       setRecaps(r);
       setBriefing(b);
+      scheduleMorningBriefing(p.notifications.morningBriefingTime, p.notifications.enabled).catch(() => {});
     }
   }, []);
 
@@ -79,6 +82,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       async updateProfile(patch) {
         const next = await localRepo.updateProfile(patch);
         setProfile(next);
+        if (patch.notifications) {
+          scheduleMorningBriefing(next.notifications.morningBriefingTime, next.notifications.enabled).catch(() => {});
+        }
       },
       async addLog(entry) {
         await localRepo.addLog(entry);
@@ -111,6 +117,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const next = { ...briefing, dismissed: false };
         await localRepo.setBriefing(next);
         setBriefing(next);
+      },
+      async setBriefing(b) {
+        await localRepo.setBriefing(b);
+        setBriefing(b);
       },
       async exportAll() {
         return localRepo.exportAll();

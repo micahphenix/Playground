@@ -16,7 +16,7 @@ import { ConcentricRings } from '../../components/Ring';
 import { Composer } from '../../components/Composer';
 import { AccentText } from '../../components/AccentText';
 import { useData } from '../../data/DataContext';
-import { analyzeMealPhoto, parseFreeform, hasApiKey } from '../../ai/coach';
+import { analyzeMealPhoto, generateBriefing, parseFreeform, hasApiKey } from '../../ai/coach';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import type { LogEntry } from '../../data/types';
 
@@ -30,9 +30,40 @@ const GOAL_LABEL: Record<string, string> = {
 
 export function TodayScreen() {
   const nav = useNavigation<Nav>();
-  const { profile, log, briefing, dismissBriefing, restoreBriefing, patterns } = useData();
+  const { profile, log, briefing, dismissBriefing, restoreBriefing, setBriefing, patterns } = useData();
   const [composerText, setComposerText] = useState('');
   const [working, setWorking] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  async function regenerate() {
+    if (!profile) return;
+    if (!hasApiKey()) {
+      Alert.alert('Coach offline', 'Set EXPO_PUBLIC_ANTHROPIC_API_KEY to regenerate the briefing.');
+      return;
+    }
+    setRegenerating(true);
+    try {
+      const draft = await generateBriefing({
+        profile,
+        recentLog: log,
+        openPatterns: patterns.filter(p => p.status === 'open'),
+      });
+      const now = new Date();
+      await setBriefing({
+        id: briefing?.id ?? 'auto',
+        forDate: now.toISOString().slice(0, 10),
+        timestamp: now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }).toLowerCase(),
+        headline: draft.headline,
+        body: draft.body,
+        actions: draft.actions,
+        dismissed: false,
+      });
+    } catch (e: unknown) {
+      Alert.alert("Couldn't write the briefing", e instanceof Error ? e.message : 'Try again.');
+    } finally {
+      setRegenerating(false);
+    }
+  }
 
   const todays = useMemo(() => sumToday(log), [log]);
   const dateLabel = useMemo(() => formatDateTitle(new Date()), []);
@@ -132,26 +163,47 @@ export function TodayScreen() {
             timestamp={briefing.timestamp}
             actions={briefing.actions}
             onDismiss={dismissBriefing}
+            onRegenerate={regenerate}
+            regenerating={regenerating}
           />
-        ) : briefing ? (
-          <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
+        ) : (
+          <View style={{ paddingHorizontal: 16, paddingBottom: 14, flexDirection: 'row', gap: 8 }}>
+            {briefing && (
+              <Pressable
+                onPress={restoreBriefing}
+                style={({ pressed }) => ({
+                  alignSelf: 'flex-start',
+                  backgroundColor: colors.surfaceAlt,
+                  borderRadius: radii.pill,
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                })}
+              >
+                <Text style={{ fontFamily: fonts.sansBold, fontSize: 11, color: colors.body, letterSpacing: 0.6 }}>
+                  ↑ BRIEFING
+                </Text>
+              </Pressable>
+            )}
             <Pressable
-              onPress={restoreBriefing}
+              onPress={regenerate}
+              disabled={regenerating}
               style={({ pressed }) => ({
                 alignSelf: 'flex-start',
-                backgroundColor: colors.surfaceAlt,
+                backgroundColor: colors.accentSoft,
                 borderRadius: radii.pill,
                 paddingHorizontal: 12,
                 paddingVertical: 7,
+                opacity: regenerating ? 0.5 : 1,
                 transform: [{ scale: pressed ? 0.98 : 1 }],
               })}
             >
-              <Text style={{ fontFamily: fonts.sansBold, fontSize: 11, color: colors.body, letterSpacing: 0.6 }}>
-                ↑ BRIEFING
+              <Text style={{ fontFamily: fonts.sansBold, fontSize: 11, color: colors.accent, letterSpacing: 0.6 }}>
+                {regenerating ? 'WRITING…' : '↻ NEW BRIEFING'}
               </Text>
             </Pressable>
           </View>
-        ) : null}
+        )}
 
         <RingsRow protein={todays.protein} calories={todays.kcal} targetP={profile?.protein_g_target ?? 185} targetC={profile?.calories_target ?? 2600} />
 
@@ -230,12 +282,16 @@ function BriefingCard({
   timestamp,
   actions,
   onDismiss,
+  onRegenerate,
+  regenerating,
 }: {
   headline: string;
   body: string;
   timestamp: string;
   actions: { label: string; kind: 'primary' | 'alt' | 'ghost' }[];
   onDismiss: () => void;
+  onRegenerate: () => void;
+  regenerating: boolean;
 }) {
   return (
     <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
@@ -244,6 +300,16 @@ function BriefingCard({
           <CoachMark size={24} />
           <Label>Morning · {timestamp}</Label>
           <View style={{ flex: 1 }} />
+          <Pressable
+            onPress={onRegenerate}
+            disabled={regenerating}
+            hitSlop={10}
+            style={{ marginRight: 6, opacity: regenerating ? 0.4 : 1 }}
+          >
+            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth={2} strokeLinecap="round">
+              <Path d="M21 12a9 9 0 1 1-3.7-7.3M21 4v5h-5" />
+            </Svg>
+          </Pressable>
           <Pressable onPress={onDismiss} hitSlop={10}>
             <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth={2}>
               <Path d="M6 6l12 12M18 6L6 18" />

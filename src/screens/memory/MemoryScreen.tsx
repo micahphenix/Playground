@@ -1,13 +1,16 @@
-import React from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { v4 as uuid } from 'uuid';
 import Svg, { Path } from 'react-native-svg';
 import { colors, fonts } from '../../theme';
 import { TopBar } from '../../components/TopBar';
 import { Card } from '../../components/Card';
 import { Label } from '../../components/Label';
+import { PillButton } from '../../components/PillButton';
 import { useData } from '../../data/DataContext';
+import { detectPatterns, hasApiKey } from '../../ai/coach';
 import type { PatternFlag, WeeklyRecap } from '../../data/types';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 
@@ -15,7 +18,45 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function MemoryScreen() {
   const nav = useNavigation<Nav>();
-  const { memory, patterns, recaps } = useData();
+  const { memory, patterns, recaps, profile, log, upsertPattern } = useData();
+  const [scanning, setScanning] = useState(false);
+
+  async function runScan() {
+    if (!profile) return;
+    if (!hasApiKey()) {
+      Alert.alert('Coach offline', 'Set EXPO_PUBLIC_ANTHROPIC_API_KEY to enable pattern scans.');
+      return;
+    }
+    setScanning(true);
+    try {
+      const candidates = await detectPatterns({
+        profile,
+        recentLog: log,
+        openPatterns: patterns.filter(p => p.status === 'open'),
+      });
+      if (!candidates.length) {
+        Alert.alert("Nothing rising", "Nothing's crossed the flagging threshold yet. The coach will keep watching.");
+        return;
+      }
+      for (const c of candidates) {
+        await upsertPattern({
+          id: uuid(),
+          topic: c.topic,
+          summary: c.summary,
+          mentions: c.mentions,
+          status: 'open',
+          tone: c.tone,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      Alert.alert("New patterns", `Found ${candidates.length}. Tap one to see what the coach noticed.`);
+    } catch (e: unknown) {
+      Alert.alert('Scan failed', e instanceof Error ? e.message : 'Try again.');
+    } finally {
+      setScanning(false);
+    }
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <TopBar title="Memory." sub="what the coach holds about you" />
@@ -26,6 +67,14 @@ export function MemoryScreen() {
               <PatternCard key={p.id} p={p} onPress={() => nav.navigate('PatternDetail', { pattern: p })} />
             ))}
             {patterns.length === 0 && <EmptyNote text="No patterns being watched yet." />}
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4 }}>
+              <PillButton
+                label={scanning ? 'Scanning…' : 'Scan for patterns'}
+                kind="alt"
+                onPress={runScan}
+                disabled={scanning}
+              />
+            </View>
           </View>
         </Section>
 

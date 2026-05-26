@@ -1,6 +1,7 @@
-import React from 'react';
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { colors, fonts, radii } from '../../theme';
 import { ModalHeader } from '../../components/ModalHeader';
@@ -45,7 +46,14 @@ const GOALS: {
 export function GoalSwitcherModal() {
   const nav = useNavigation();
   const { profile, updateProfile } = useData();
+  const [picking, setPicking] = useState(false);
   if (!profile) return null;
+
+  async function onPickDate(_: DateTimePickerEvent, date?: Date) {
+    if (Platform.OS !== 'ios') setPicking(false);
+    if (!date) return;
+    await updateProfile({ rideTargetDate: date.toISOString().slice(0, 10) });
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -58,13 +66,6 @@ export function GoalSwitcherModal() {
               key={g.id}
               onPress={async () => {
                 await updateProfile({ activeGoal: g.id });
-                if (g.dateNeeded && !profile.rideTargetDate) {
-                  Alert.alert(
-                    'Pin a date',
-                    'Set a target date for the 50-mile ride so the coach can periodize the build.',
-                    [{ text: 'Later', style: 'cancel' }, { text: 'Set in 8 weeks', onPress: () => setEightWeeks() }],
-                  );
-                }
               }}
             >
               <Card
@@ -101,7 +102,7 @@ export function GoalSwitcherModal() {
                 >
                   "{g.quote}"
                 </Text>
-                {g.dateNeeded && !profile.rideTargetDate && (
+                {g.dateNeeded && (
                   <View
                     style={{
                       marginTop: 12,
@@ -109,21 +110,33 @@ export function GoalSwitcherModal() {
                       backgroundColor: colors.bg,
                       borderRadius: radii.sm,
                       borderWidth: 0.5,
-                      borderColor: colors.lineStrong,
-                      borderStyle: 'dashed',
+                      borderColor: profile.rideTargetDate ? colors.line : colors.lineStrong,
+                      borderStyle: profile.rideTargetDate ? 'solid' : 'dashed',
                       flexDirection: 'row',
                       alignItems: 'center',
                       gap: 10,
                     }}
                   >
-                    <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={colors.warn} strokeWidth={2}>
+                    <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={profile.rideTargetDate ? colors.accentAlt : colors.warn} strokeWidth={2}>
                       <Circle cx={12} cy={12} r={9} />
                       <Path d="M12 8v4M12 16h0" />
                     </Svg>
-                    <Text style={{ flex: 1, fontFamily: fonts.sans, fontSize: 12, color: colors.warn }}>
-                      Pin a target date to enable periodization.
+                    <Text
+                      style={{
+                        flex: 1,
+                        fontFamily: fonts.sans,
+                        fontSize: 12,
+                        color: profile.rideTargetDate ? colors.body : colors.warn,
+                      }}
+                    >
+                      {profile.rideTargetDate
+                        ? `Target: ${formatDate(profile.rideTargetDate)} · ${daysUntil(profile.rideTargetDate)} days`
+                        : 'Pin a target date to enable periodization.'}
                     </Text>
-                    <PillButton label="Set date" onPress={setEightWeeks} />
+                    <PillButton
+                      label={profile.rideTargetDate ? 'Change' : 'Set date'}
+                      onPress={() => setPicking(true)}
+                    />
                   </View>
                 )}
               </Card>
@@ -144,12 +157,39 @@ export function GoalSwitcherModal() {
           Targets, framing, and recommendations all shift to match the active goal.
         </Text>
       </ScrollView>
+      {picking && (
+        <DateTimePicker
+          mode="date"
+          display={Platform.OS === 'ios' ? 'inline' : 'default'}
+          value={profile.rideTargetDate ? new Date(profile.rideTargetDate) : eightWeeksOut()}
+          minimumDate={new Date()}
+          onChange={onPickDate}
+        />
+      )}
+      {Platform.OS === 'ios' && picking && (
+        <View style={{ padding: 12, alignItems: 'center', backgroundColor: colors.surface, borderTopWidth: 0.5, borderTopColor: colors.line }}>
+          <PillButton label="Done" kind="ink" onPress={() => setPicking(false)} />
+        </View>
+      )}
     </View>
   );
+}
 
-  async function setEightWeeks() {
-    const d = new Date();
-    d.setDate(d.getDate() + 56);
-    await updateProfile({ rideTargetDate: d.toISOString().slice(0, 10) });
+function eightWeeksOut() {
+  const d = new Date();
+  d.setDate(d.getDate() + 56);
+  return d;
+}
+
+function formatDate(iso: string) {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return iso;
   }
+}
+
+function daysUntil(iso: string) {
+  const ms = new Date(iso).getTime() - Date.now();
+  return Math.max(0, Math.round(ms / 86_400_000));
 }

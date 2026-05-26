@@ -20,8 +20,10 @@ import { Bubble } from '../../components/Bubble';
 import { CoachMark } from '../../components/CoachMark';
 import { Card } from '../../components/Card';
 import { PhotoStripe } from '../../components/PhotoStripe';
+import { VoiceRecorder } from '../../components/VoiceRecorder';
 import { useData } from '../../data/DataContext';
-import { analyzeMealPhoto, chat, hasApiKey } from '../../ai/coach';
+import { analyzeMealPhoto, interpret, hasApiKey } from '../../ai/coach';
+import { hasTranscriptionKey, transcribe } from '../../ai/transcribe';
 import type { Message, PatternFlag } from '../../data/types';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 
@@ -33,6 +35,7 @@ export function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>(() => seedMessages());
   const [text, setText] = useState('');
   const [thinking, setThinking] = useState(false);
+  const [recording, setRecording] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   const ctx = useMemo(
@@ -46,13 +49,13 @@ export function ChatScreen() {
 
   const send = useCallback(async () => {
     if (!text.trim() || !profile) return;
-    const userMsg: Message = { id: uuid(), role: 'user', text, createdAt: new Date().toISOString() };
-    const history = [...messages, userMsg];
-    setMessages(history);
+    const userText = text;
+    const userMsg: Message = { id: uuid(), role: 'user', text: userText, createdAt: new Date().toISOString() };
+    setMessages(m => [...m, userMsg]);
     setText('');
     if (!hasApiKey()) {
-      setMessages([
-        ...history,
+      setMessages(m => [
+        ...m,
         {
           id: uuid(),
           role: 'coach',
@@ -64,19 +67,23 @@ export function ChatScreen() {
     }
     setThinking(true);
     try {
-      const reply = await chat(
-        history
-          .filter(m => m.role !== 'system' && m.text)
-          .map(m => ({ role: m.role === 'user' ? ('user' as const) : ('assistant' as const), content: m.text! })),
-        ctx,
-      );
-      setMessages([
-        ...history,
-        { id: uuid(), role: 'coach', text: reply, createdAt: new Date().toISOString() },
+      const result = await interpret(userText, ctx);
+      // Always append the conversational reply first so the chat reads naturally.
+      setMessages(m => [
+        ...m,
+        { id: uuid(), role: 'coach', text: result.reply, createdAt: new Date().toISOString() },
       ]);
+      // If the message contained loggable entries, route to the confirm flow.
+      if (result.entries.length > 0) {
+        nav.navigate('VoiceConfirm', {
+          transcript: userText,
+          durationSec: 0,
+          entries: result.entries,
+        });
+      }
     } catch (e: unknown) {
-      setMessages([
-        ...history,
+      setMessages(m => [
+        ...m,
         {
           id: uuid(),
           role: 'coach',
@@ -88,7 +95,7 @@ export function ChatScreen() {
       setThinking(false);
       requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     }
-  }, [text, messages, profile, ctx]);
+  }, [text, profile, ctx, nav]);
 
   async function attachPhoto() {
     if (!profile) return;
@@ -116,18 +123,61 @@ export function ChatScreen() {
     }
   }
 
+  function startVoice() {
+    if (!hasTranscriptionKey()) {
+      Alert.alert(
+        'Voice not configured',
+        'Set EXPO_PUBLIC_OPENAI_API_KEY in .env to enable voice transcription (Whisper). You can still type entries.',
+      );
+      return;
+    }
+    setRecording(true);
+  }
+
+  async function onVoiceDone(uri: string, durationSec: number) {
+    setRecording(false);
+    if (!profile) return;
+    setThinking(true);
+    try {
+      const { text: said } = await transcribe(uri, durationSec);
+      // Treat the transcript as if the user typed it — same interpret path.
+      const userMsg: Message = {
+        id: uuid(),
+        role: 'user',
+        text: said || '[empty recording]',
+        createdAt: new Date().toISOString(),
+      };
+      setMessages(m => [...m, userMsg]);
+      if (!said) {
+        setThinking(false);
+        return;
+      }
+      const result = await interpret(said, ctx);
+      setMessages(m => [
+        ...m,
+        { id: uuid(), role: 'coach', text: result.reply, createdAt: new Date().toISOString() },
+      ]);
+      if (result.entries.length > 0) {
+        nav.navigate('VoiceConfirm', {
+          transcript: said,
+          durationSec,
+          entries: result.entries,
+        });
+      }
+    } catch (e: unknown) {
+      Alert.alert("Couldn't transcribe", e instanceof Error ? e.message : 'Try again.');
+    } finally {
+      setThinking(false);
+    }
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <TopBar
-        title="Today."
-        sub="conversation"
-        onBack={() => nav.goBack()}
-        right={<CoachMark size={28} />}
-      />
+      <TopBar title="Today." sub="conversation" onBack={() => nav.goBack()} right={<CoachMark size={28} />} />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        keyboardVerticalOffset={0}
       >
         <ScrollView
           ref={scrollRef}
@@ -136,7 +186,12 @@ export function ChatScreen() {
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         >
           {messages.map(m => (
-            <MessageView key={m.id} m={m} patterns={patterns} onOpenPattern={p => nav.navigate('PatternDetail', { pattern: p })} />
+            <MessageView
+              key={m.id}
+              m={m}
+              patterns={patterns}
+              onOpenPattern={p => nav.navigate('PatternDetail', { pattern: p })}
+            />
           ))}
           {thinking && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -154,13 +209,14 @@ export function ChatScreen() {
             </View>
           )}
         </ScrollView>
+        <VoiceRecorder visible={recording} onCancel={() => setRecording(false)} onComplete={onVoiceDone} />
         <Composer
           value={text}
           onChangeText={setText}
           onSend={send}
           onCamera={attachPhoto}
-          onMic={attachPhoto}
-          disabled={thinking}
+          onMic={startVoice}
+          disabled={thinking || recording}
         />
       </KeyboardAvoidingView>
     </View>
@@ -188,12 +244,8 @@ function MessageView({
               I'M NOTICING SOMETHING
             </Text>
           </View>
-          <Text style={{ fontFamily: fonts.serif, fontSize: 16, color: colors.ink, lineHeight: 22 }}>
-            {p.topic}
-          </Text>
-          <Text style={{ fontFamily: fonts.sans, fontSize: 12.5, color: colors.muted, marginTop: 4 }}>
-            {p.summary}
-          </Text>
+          <Text style={{ fontFamily: fonts.serif, fontSize: 16, color: colors.ink, lineHeight: 22 }}>{p.topic}</Text>
+          <Text style={{ fontFamily: fonts.sans, fontSize: 12.5, color: colors.muted, marginTop: 4 }}>{p.summary}</Text>
         </Card>
       </Pressable>
     );
@@ -221,27 +273,17 @@ function Dot({ delay }: { delay: number }) {
     };
   }, [delay]);
   return (
-    <View
-      style={{
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: colors.accent,
-        opacity: on ? 1 : 0.35,
-      }}
-    />
+    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent, opacity: on ? 1 : 0.35 }} />
   );
 }
 
 function seedMessages(): Message[] {
-  const now = new Date().toISOString();
   return [
     {
       id: uuid(),
       role: 'coach',
-      text:
-        "Morning. I'm here. Photo, voice, or just type what's on your mind — I'll keep up.",
-      createdAt: now,
+      text: "Morning. I'm here. Photo, voice, or just type what's on your mind — I'll keep up.",
+      createdAt: new Date().toISOString(),
     },
   ];
 }
