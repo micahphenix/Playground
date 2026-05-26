@@ -111,7 +111,23 @@ export function ProfileScreen() {
     },
     {
       title: 'Constraints',
-      rows: profile.constraints.map(c => ({ title: c.split('—')[0]?.trim() ?? c, detail: c.split('—').slice(1).join('—').trim() || 'Hard constraint', kind: 'chev' })),
+      rows: profile.constraints.map(c => ({
+        title: c.split('—')[0]?.trim() ?? c,
+        detail: c.split('—').slice(1).join('—').trim() || 'Hard constraint',
+        kind: 'chev',
+        onPress: () =>
+          Alert.alert('Remove constraint?', `The coach will stop treating "${c}" as a hard line.`, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Remove',
+              style: 'destructive',
+              onPress: () =>
+                updateProfile({
+                  constraints: profile.constraints.filter(x => x !== c),
+                }),
+            },
+          ]),
+      })),
     },
     {
       title: 'Data',

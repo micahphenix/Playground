@@ -34,6 +34,7 @@ export function ChatScreen() {
   const { profile, log, patterns } = useData();
   const [messages, setMessages] = useState<Message[]>(() => seedMessages());
   const [text, setText] = useState('');
+  const hasUserActivity = messages.some(m => m.role === 'user');
   const [thinking, setThinking] = useState(false);
   const [recording, setRecording] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -193,6 +194,13 @@ export function ChatScreen() {
               onOpenPattern={p => nav.navigate('PatternDetail', { pattern: p })}
             />
           ))}
+          {!hasUserActivity && !thinking && (
+            <SuggestedQuestions
+              onPick={q => {
+                setText(q);
+              }}
+            />
+          )}
           {thinking && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <CoachMark size={22} />
@@ -260,6 +268,37 @@ function MessageView({
     );
   }
   return <Bubble from={m.role === 'user' ? 'user' : 'coach'}>{m.text}</Bubble>;
+}
+
+function SuggestedQuestions({ onPick }: { onPick: (q: string) => void }) {
+  const qs = [
+    'Do I have room for a beer tonight?',
+    'Should I lift today or rest?',
+    'Where do I stand on protein this week?',
+  ];
+  return (
+    <View style={{ gap: 8, marginTop: 4 }}>
+      <Text style={{ fontFamily: fonts.sansBold, fontSize: 10.5, color: colors.muted, letterSpacing: 1.2, paddingLeft: 4 }}>
+        TRY ASKING
+      </Text>
+      {qs.map((q, i) => (
+        <Pressable
+          key={i}
+          onPress={() => onPick(q)}
+          style={({ pressed }) => ({
+            transform: [{ scale: pressed ? 0.99 : 1 }],
+          })}
+        >
+          <Card style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text style={{ flex: 1, fontFamily: fonts.serifRegItalic, fontStyle: 'italic', fontSize: 15, color: colors.ink, lineHeight: 21 }}>
+              "{q}"
+            </Text>
+            <Text style={{ color: colors.accent, fontFamily: fonts.sansBold, fontSize: 14 }}>→</Text>
+          </Card>
+        </Pressable>
+      ))}
+    </View>
+  );
 }
 
 function Dot({ delay }: { delay: number }) {

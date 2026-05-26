@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { colors, fonts, radii, type } from '../../theme';
 import { CoachMark } from '../../components/CoachMark';
 import { Card } from '../../components/Card';
@@ -21,6 +22,7 @@ interface Draft {
   faithFraming: boolean;
   constraints: string[];
   activeGoal: GoalId;
+  rideTargetDate: string | null;
   healthKitGranted: boolean;
   tone: CoachTone;
 }
@@ -45,6 +47,7 @@ export function OnboardingScreen() {
     faithFraming: defaults.faithFraming,
     constraints: defaults.constraints,
     activeGoal: defaults.activeGoal,
+    rideTargetDate: defaults.rideTargetDate,
     healthKitGranted: false,
     tone: defaults.tone,
   });
@@ -73,6 +76,7 @@ export function OnboardingScreen() {
       faithFraming: draft.faithFraming,
       constraints: draft.constraints,
       activeGoal: draft.activeGoal,
+      rideTargetDate: draft.rideTargetDate,
       tone: draft.tone,
     };
     await updateProfile(patchObj);
@@ -379,6 +383,14 @@ function GoalStep({ draft, patch }: { draft: Draft; patch: <K extends keyof Draf
     { id: 'ride', name: '50-mile ride', detail: 'Cycling base · taper · maintenance lifts', color: colors.accentAlt },
     { id: 'recover', name: 'Recover well', detail: 'Lighter load · sleep priority', color: colors.muted },
   ];
+  const [picking, setPicking] = useState(false);
+
+  function onPickDate(_: DateTimePickerEvent, date?: Date) {
+    if (Platform.OS !== 'ios') setPicking(false);
+    if (!date) return;
+    patch('rideTargetDate', date.toISOString().slice(0, 10));
+  }
+
   return (
     <View>
       <StepHeader eyebrow="Step 3 of 5" title="What season are you in?" sub="The active goal shifts targets, briefings, and coaching tone." />
@@ -401,8 +413,79 @@ function GoalStep({ draft, patch }: { draft: Draft; patch: <K extends keyof Draf
           );
         })}
       </View>
+      {draft.activeGoal === 'ride' && (
+        <Card style={{ padding: 14, marginTop: 10, backgroundColor: colors.accentAltSoft }}>
+          <Text style={{ fontFamily: fonts.sansBold, fontSize: 10.5, color: colors.accentAlt, letterSpacing: 0.8 }}>
+            PIN THE DATE
+          </Text>
+          <Text style={{ fontFamily: fonts.serif, fontSize: 15.5, color: colors.ink, marginTop: 6, lineHeight: 22 }}>
+            {draft.rideTargetDate
+              ? `Riding ${formatDate(draft.rideTargetDate)} · ${daysUntil(draft.rideTargetDate)} days out.`
+              : 'A date locks in the ramp, peak week, and taper. You can change it anytime.'}
+          </Text>
+          <Pressable
+            onPress={() => setPicking(true)}
+            style={({ pressed }) => ({
+              marginTop: 10,
+              paddingVertical: 10,
+              paddingHorizontal: 14,
+              borderRadius: 999,
+              alignSelf: 'flex-start',
+              backgroundColor: colors.accentAlt,
+              transform: [{ scale: pressed ? 0.98 : 1 }],
+            })}
+          >
+            <Text style={{ color: colors.surface, fontFamily: fonts.sansBold, fontSize: 13 }}>
+              {draft.rideTargetDate ? 'Change date' : 'Pick a date'}
+            </Text>
+          </Pressable>
+          {picking && (
+            <View style={{ marginTop: 12 }}>
+              <DateTimePicker
+                mode="date"
+                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                value={draft.rideTargetDate ? new Date(draft.rideTargetDate) : eightWeeksOut()}
+                minimumDate={new Date()}
+                onChange={onPickDate}
+              />
+              {Platform.OS === 'ios' && (
+                <Pressable
+                  onPress={() => setPicking(false)}
+                  style={({ pressed }) => ({
+                    alignSelf: 'flex-end',
+                    paddingVertical: 8,
+                    paddingHorizontal: 14,
+                    borderRadius: 999,
+                    backgroundColor: colors.ink,
+                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                  })}
+                >
+                  <Text style={{ color: colors.surface, fontFamily: fonts.sansBold, fontSize: 12 }}>Done</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+        </Card>
+      )}
     </View>
   );
+}
+
+function eightWeeksOut() {
+  const d = new Date();
+  d.setDate(d.getDate() + 56);
+  return d;
+}
+function formatDate(iso: string) {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return iso;
+  }
+}
+function daysUntil(iso: string) {
+  const ms = new Date(iso).getTime() - Date.now();
+  return Math.max(0, Math.round(ms / 86_400_000));
 }
 
 function HealthKitStep({ granted, onGrant }: { granted: boolean; onGrant: () => void | Promise<void> }) {
