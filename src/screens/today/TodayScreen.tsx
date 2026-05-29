@@ -17,6 +17,7 @@ import { ConcentricRings } from '../../components/Ring';
 import { Composer } from '../../components/Composer';
 import { AccentText } from '../../components/AccentText';
 import { useData } from '../../data/DataContext';
+import { sumDayTotals } from '../../data/totals';
 import { analyzeMealPhoto, generateBriefing, parseFreeform, hasApiKey } from '../../ai/coach';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import type { LogEntry } from '../../data/types';
@@ -299,17 +300,8 @@ export function TodayScreen() {
 }
 
 function sumToday(log: LogEntry[]) {
-  const today = new Date().toISOString().slice(0, 10);
-  let kcal = 0,
-    protein = 0;
-  for (const e of log) {
-    if (e.createdAt.slice(0, 10) !== today) continue;
-    if (e.macros) {
-      kcal += e.macros.kcal;
-      protein += e.macros.protein_g;
-    }
-  }
-  return { kcal, protein };
+  const { kcal, protein_g } = sumDayTotals(log);
+  return { kcal, protein: protein_g };
 }
 
 function formatDateTitle(d: Date) {

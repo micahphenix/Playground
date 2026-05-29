@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { LogEntry, MealItem, PatternFlag, Profile } from '../data/types';
 import { buildSystemPrompt } from './systemPrompt';
+import { parseJsonish } from './json';
 
 // Single point of contact with Anthropic. Screens never import the SDK directly.
 //
@@ -249,16 +250,6 @@ export async function generateBriefing(ctx: CoachContext): Promise<BriefingDraft
   return parseJsonish<BriefingDraft>(text);
 }
 
-// JSON parsing that tolerates the model adding stray prose or code fences.
-function parseJsonish<T>(text: string): T {
-  let s = text.trim();
-  const fence = s.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fence) s = fence[1];
-  const first = s.indexOf('{');
-  const last = s.lastIndexOf('}');
-  if (first >= 0 && last > first) s = s.slice(first, last + 1);
-  return JSON.parse(s) as T;
-}
 
 // 5) LLM-driven pattern scan. Looks across recent logs + open patterns for
 // signals worth surfacing. Returns flag *candidates* — the UI decides whether
