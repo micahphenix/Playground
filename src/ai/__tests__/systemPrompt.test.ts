@@ -39,14 +39,16 @@ describe('buildSystemPrompt — handoff prompt requirements', () => {
   });
 
   it('includes hard constraints verbatim', () => {
-    expect(out).toContain('squats off-limits');
+    expect(out).toContain('no loaded squats');
     expect(out).toContain('GERD');
   });
 
-  it('includes targets and active goal', () => {
+  it('includes targets, active goal, and the goal tracking plan', () => {
     expect(out).toContain('185');
     expect(out).toContain('2600');
-    expect(out).toContain('muscle');
+    expect(out).toContain('Build muscle');
+    expect(out).toContain('WEEKLY CHECKLIST');
+    expect(out).toContain('PATTERNS TO WATCH');
   });
 
   it('includes recent log entries', () => {

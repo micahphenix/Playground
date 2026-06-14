@@ -5,11 +5,13 @@ import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/b
 import Svg, { Path, Circle } from 'react-native-svg';
 import { colors, fonts } from '../theme';
 import { TodayScreen } from '../screens/today/TodayScreen';
+import { WorkoutsScreen } from '../screens/workouts/WorkoutsScreen';
 import { MemoryScreen } from '../screens/memory/MemoryScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 
 export type MainTabParamList = {
   Today: undefined;
+  Workouts: undefined;
   Memory: undefined;
   Profile: undefined;
 };
@@ -23,6 +25,7 @@ export function MainTabs() {
       screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="Today" component={TodayScreen} />
+      <Tab.Screen name="Workouts" component={WorkoutsScreen} />
       <Tab.Screen name="Memory" component={MemoryScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
@@ -82,6 +85,12 @@ function TabIcon({ name, active }: { name: keyof MainTabParamList; active: boole
       return (
         <Svg width={w} height={h} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
           <Path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z" />
+        </Svg>
+      );
+    case 'Workouts':
+      return (
+        <Svg width={w} height={h} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+          <Path d="M6.5 6.5l11 11M4 9l-1.5 1.5a1.5 1.5 0 0 0 0 2.1l.4.4M20 15l1.5-1.5a1.5 1.5 0 0 0 0-2.1l-.4-.4M9 4l1.5-1.5a1.5 1.5 0 0 1 2.1 0l.4.4M15 20l-1.5 1.5a1.5 1.5 0 0 1-2.1 0l-.4-.4" />
         </Svg>
       );
     case 'Memory':

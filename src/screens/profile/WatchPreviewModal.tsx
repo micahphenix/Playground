@@ -7,6 +7,7 @@ import { Card } from '../../components/Card';
 import { Label } from '../../components/Label';
 import { WatchFace, WatchShape } from '../../components/WatchFace';
 import { useData } from '../../data/DataContext';
+import { activeTrackingPlan } from '../../data/trackingPlans';
 
 // In-app preview of the Steward watch face. The same content renders for any
 // wrist — round (Apple Watch / round Garmin) or square (Garmin Vivoactive,
@@ -41,6 +42,7 @@ export function WatchPreviewModal() {
 
   if (!profile) return null;
 
+  const plan = activeTrackingPlan(profile);
   const coachLine = briefingShortLine(briefing?.body) ?? 'Quiet day so far. Walk it open.';
 
   return (
@@ -63,9 +65,9 @@ export function WatchPreviewModal() {
             shape={shape}
             diameter={260}
             proteinValue={totals.protein}
-            proteinTarget={profile.protein_g_target}
+            proteinTarget={plan.rings.protein_g}
             caloriesValue={totals.kcal}
-            caloriesTarget={profile.calories_target}
+            caloriesTarget={plan.rings.calories}
             date={new Date()}
             coachLine={coachLine}
             goalTag={GOAL_TAG[profile.activeGoal]}

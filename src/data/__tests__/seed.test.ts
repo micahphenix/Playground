@@ -5,12 +5,13 @@ describe('seed data', () => {
     const p = defaultProfile();
     expect(p.name).toBe('Aaron');
     expect(p.age).toBe(33);
-    expect(p.protein_g_target).toBe(185);
-    expect(p.calories_target).toBe(2600);
     expect(p.activeGoal).toBe('muscle');
     expect(p.rideTargetDate).toBeNull();
-    expect(p.constraints.join(' ')).toMatch(/squats off-limits/i);
+    // Constraint reflects the June 2026 rehab progression, not a permanent ban.
+    expect(p.constraints.join(' ')).toMatch(/no loaded squats/i);
     expect(p.constraints.join(' ')).toMatch(/GERD/);
+    // Active calf strain seeded as a current limitation.
+    expect(p.limitations.some(l => /calf/i.test(l.label))).toBe(true);
   });
 
   it('seedLog produces meals with macros', () => {

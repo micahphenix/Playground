@@ -165,14 +165,7 @@ function EntryCard({ e }: { e: ParsedEntry }) {
         )}
       </View>
       <Text style={{ fontFamily: fonts.serifBold, fontSize: 16, color: colors.ink, marginTop: 8 }}>{e.title}</Text>
-      {e.macros && (
-        <View style={{ marginTop: 8, flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-          <Chip>{e.macros.kcal} kcal</Chip>
-          <Chip tone="accent">{e.macros.protein_g}g protein</Chip>
-          <Chip>{e.macros.carb_g}g carb</Chip>
-          <Chip>{e.macros.fat_g}g fat</Chip>
-        </View>
-      )}
+      {e.macros && <MacroTable macros={e.macros} />}
       {e.detail && (
         <Text style={{ fontFamily: fonts.sans, fontSize: 12.5, color: colors.muted, marginTop: 8, fontStyle: 'italic' }}>
           {e.detail}
@@ -191,6 +184,53 @@ function EntryCard({ e }: { e: ParsedEntry }) {
         </View>
       )}
     </Card>
+  );
+}
+
+function MacroTable({ macros }: { macros: NonNullable<LogEntry['macros']> }) {
+  const rows: { label: string; value: string; highlight?: boolean }[] = [
+    { label: 'Calories', value: `${macros.kcal} kcal` },
+    { label: 'Protein', value: `${macros.protein_g} g`, highlight: true },
+    { label: 'Carbs', value: `${macros.carb_g} g` },
+    { label: 'Fat', value: `${macros.fat_g} g` },
+  ];
+  return (
+    <View
+      style={{
+        marginTop: 10,
+        borderWidth: 0.5,
+        borderColor: colors.line,
+        borderRadius: 10,
+        overflow: 'hidden',
+      }}
+    >
+      {rows.map((r, i) => (
+        <View
+          key={r.label}
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingVertical: 9,
+            paddingHorizontal: 12,
+            borderBottomWidth: i < rows.length - 1 ? 0.5 : 0,
+            borderBottomColor: colors.line,
+            backgroundColor: r.highlight ? colors.accentSoft : colors.surface,
+          }}
+        >
+          <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.body }}>{r.label}</Text>
+          <Text
+            style={{
+              fontFamily: fonts.mono,
+              fontSize: 13.5,
+              color: r.highlight ? colors.accent : colors.ink,
+            }}
+          >
+            {r.value}
+          </Text>
+        </View>
+      ))}
+    </View>
   );
 }
 

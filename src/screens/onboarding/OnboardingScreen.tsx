@@ -10,7 +10,16 @@ import { Chip } from '../../components/Chip';
 import { useData } from '../../data/DataContext';
 import { HealthKit } from '../../health/HealthKit';
 import { defaultProfile } from '../../data/seed';
+import { TRACKING_PLANS } from '../../data/trackingPlans';
 import type { CoachTone, GoalId, Profile } from '../../data/types';
+
+const GOAL_COLOR = {
+  accent: colors.accent,
+  accentAlt: colors.accentAlt,
+  muted: colors.muted,
+  good: colors.good,
+  warn: colors.warn,
+} as const;
 
 // 5-step setup that writes real values into the Profile before
 // completeOnboarding() seeds the rest.
@@ -18,36 +27,55 @@ import type { CoachTone, GoalId, Profile } from '../../data/types';
 interface Draft {
   name: string;
   age: string;
-  location: string;
-  faithFraming: boolean;
+  city: string;
+  state: string;
   constraints: string[];
-  activeGoal: GoalId;
+  // Ordered — the first is the primary goal (drives the rings).
+  selectedGoals: GoalId[];
   rideTargetDate: string | null;
+  eventLabel: string;
   healthKitGranted: boolean;
   tone: CoachTone;
 }
 
 const SUGGESTED_CONSTRAINTS = [
-  'Knee replacement — squats off-limits',
-  'GERD — no heavy late meals',
-  'Insomnia',
+  'Knee replacement — no loaded squats yet',
+  'GERD / acid reflux — no heavy late meals',
   'Lower back sensitivity',
-  'Shoulder mobility',
+  'Shoulder mobility limits',
+  'Recent injury still healing',
+  'High blood pressure',
+  'Diabetes / blood-sugar management',
+  'Insomnia / poor sleep',
 ];
+
+const US_STATES = [
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL',
+  'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT',
+  'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI',
+  'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC',
+];
+
+function splitLocation(loc: string): { city: string; state: string } {
+  const parts = loc.split(',').map(s => s.trim());
+  return { city: parts[0] ?? '', state: (parts[1] ?? '').toUpperCase() };
+}
 
 export function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const { completeOnboarding, updateProfile } = useData();
   const [step, setStep] = useState(0);
   const defaults = defaultProfile();
+  const defaultLoc = splitLocation(defaults.location);
   const [draft, setDraft] = useState<Draft>({
     name: defaults.name,
     age: String(defaults.age),
-    location: defaults.location,
-    faithFraming: defaults.faithFraming,
+    city: defaultLoc.city,
+    state: defaultLoc.state,
     constraints: defaults.constraints,
-    activeGoal: defaults.activeGoal,
+    selectedGoals: [defaults.activeGoal, ...defaults.secondaryGoals],
     rideTargetDate: defaults.rideTargetDate,
+    eventLabel: defaults.eventLabel ?? '',
     healthKitGranted: false,
     tone: defaults.tone,
   });
@@ -69,14 +97,18 @@ export function OnboardingScreen() {
     // Seed first so the profile exists, then overwrite with the user's
     // captured values.
     await completeOnboarding();
+    const location = [draft.city.trim(), draft.state].filter(Boolean).join(', ');
+    const goals = draft.selectedGoals.length ? draft.selectedGoals : [defaults.activeGoal];
+    const hasRide = goals.includes('ride');
     const patchObj: Partial<Profile> = {
       name: draft.name.trim() || defaults.name,
       age: Number(draft.age) || defaults.age,
-      location: draft.location.trim() || defaults.location,
-      faithFraming: draft.faithFraming,
+      location: location || defaults.location,
       constraints: draft.constraints,
-      activeGoal: draft.activeGoal,
-      rideTargetDate: draft.rideTargetDate,
+      activeGoal: goals[0],
+      secondaryGoals: goals.slice(1),
+      rideTargetDate: hasRide ? draft.rideTargetDate : null,
+      eventLabel: hasRide ? draft.eventLabel.trim() || null : null,
       tone: draft.tone,
     };
     await updateProfile(patchObj);
@@ -262,40 +294,68 @@ function BasicsStep({ draft, patch }: { draft: Draft; patch: <K extends keyof Dr
         keyboardType="number-pad"
       />
       <Field
-        label="Where you train"
-        value={draft.location}
-        onChangeText={t => patch('location', t)}
-        placeholder="City, state"
+        label="City"
+        value={draft.city}
+        onChangeText={t => patch('city', t)}
+        placeholder="Euless"
       />
-      <Card style={{ padding: 14, marginTop: 12 }}>
-        <Pressable
-          onPress={() => patch('faithFraming', !draft.faithFraming)}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
-        >
-          <View
-            style={{
-              width: 22,
-              height: 22,
-              borderRadius: 6,
-              backgroundColor: draft.faithFraming ? colors.accent : 'transparent',
-              borderWidth: draft.faithFraming ? 0 : 1,
-              borderColor: colors.lineStrong,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {draft.faithFraming && (
-              <Text style={{ color: colors.surface, fontFamily: fonts.sansBold, fontSize: 13 }}>✓</Text>
-            )}
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: fonts.serif, fontSize: 15, color: colors.ink }}>Stewardship framing</Text>
-            <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 }}>
-              The coach speaks of the body as a stewardship, not a project to optimize.
-            </Text>
-          </View>
-        </Pressable>
-      </Card>
+      <StateSelect value={draft.state} onChange={s => patch('state', s)} />
+    </View>
+  );
+}
+
+function StateSelect({ value, onChange }: { value: string; onChange: (s: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={{ marginBottom: 10 }}>
+      <Label>State</Label>
+      <Pressable
+        onPress={() => setOpen(o => !o)}
+        style={{
+          marginTop: 6,
+          padding: 14,
+          backgroundColor: colors.surface,
+          borderRadius: radii.sm,
+          borderWidth: 0.5,
+          borderColor: open ? colors.lineStrong : colors.line,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <Text style={{ fontFamily: fonts.serif, fontSize: 16, color: value ? colors.ink : colors.muted }}>
+          {value || 'Select state'}
+        </Text>
+        <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.muted }}>{open ? '▲' : '▼'}</Text>
+      </Pressable>
+      {open && (
+        <Card style={{ marginTop: 6, maxHeight: 220, overflow: 'hidden' }}>
+          <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+            {US_STATES.map(s => {
+              const sel = s === value;
+              return (
+                <Pressable
+                  key={s}
+                  onPress={() => {
+                    onChange(s);
+                    setOpen(false);
+                  }}
+                  style={({ pressed }) => ({
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    backgroundColor: sel ? colors.accentSoft : pressed ? colors.surfaceAlt : 'transparent',
+                  })}
+                >
+                  <Text style={{ fontFamily: fonts.serif, fontSize: 15, color: sel ? colors.accent : colors.ink }}>
+                    {sel ? '✓ ' : ''}
+                    {s}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </Card>
+      )}
     </View>
   );
 }
@@ -339,12 +399,26 @@ function Field({
 }
 
 function ConstraintsStep({ draft, toggle }: { draft: Draft; toggle: (s: string) => void }) {
+  const [custom, setCustom] = useState('');
+  // Constraints the user typed that aren't in the suggested list.
+  const customConstraints = draft.constraints.filter(c => !SUGGESTED_CONSTRAINTS.includes(c));
+
+  function addCustom() {
+    const v = custom.trim();
+    if (!v || draft.constraints.includes(v)) {
+      setCustom('');
+      return;
+    }
+    toggle(v);
+    setCustom('');
+  }
+
   return (
     <View>
       <StepHeader
         eyebrow="Step 2 of 5"
-        title="What is your body asking you to respect?"
-        sub="Pick anything that's a real constraint. The coach treats these as hard lines."
+        title="Any constraints I should know about?"
+        sub="Anything we should accommodate in your training regimen. The coach treats these as hard lines."
       />
       <View style={{ gap: 8 }}>
         {SUGGESTED_CONSTRAINTS.map(label => {
@@ -369,7 +443,69 @@ function ConstraintsStep({ draft, toggle }: { draft: Draft; toggle: (s: string) 
             </Pressable>
           );
         })}
+
+        {/* Custom (Other) constraints the user has added */}
+        {customConstraints.map(label => (
+          <Pressable
+            key={label}
+            onPress={() => toggle(label)}
+            style={{
+              padding: 14,
+              borderRadius: radii.sm,
+              backgroundColor: colors.accentSoft,
+              borderWidth: 1,
+              borderColor: colors.accent,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <Text style={{ flex: 1, fontFamily: fonts.serif, fontSize: 15, color: colors.accent }}>
+              ✓ {label}
+            </Text>
+            <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.muted }}>Remove</Text>
+          </Pressable>
+        ))}
       </View>
+
+      {/* Other — free entry */}
+      <Label style={{ marginTop: 16 }}>Other</Label>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+        <TextInput
+          value={custom}
+          onChangeText={setCustom}
+          onSubmitEditing={addCustom}
+          placeholder="Something specific to you…"
+          placeholderTextColor={colors.muted}
+          returnKeyType="done"
+          style={{
+            flex: 1,
+            padding: 14,
+            backgroundColor: colors.surface,
+            borderRadius: radii.sm,
+            borderWidth: 0.5,
+            borderColor: colors.line,
+            fontFamily: fonts.serif,
+            fontSize: 15,
+            color: colors.ink,
+          }}
+        />
+        <Pressable
+          onPress={addCustom}
+          disabled={!custom.trim()}
+          style={({ pressed }) => ({
+            paddingHorizontal: 18,
+            borderRadius: radii.sm,
+            backgroundColor: colors.ink,
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: custom.trim() ? (pressed ? 0.9 : 1) : 0.4,
+          })}
+        >
+          <Text style={{ color: colors.surface, fontFamily: fonts.sansBold, fontSize: 14 }}>Add</Text>
+        </Pressable>
+      </View>
+
       <Text style={{ marginTop: 14, fontFamily: fonts.serifRegItalic, fontSize: 13, color: colors.muted }}>
         You can add more anytime by mentioning them in chat ("tweaked my calf today").
       </Text>
@@ -378,12 +514,15 @@ function ConstraintsStep({ draft, toggle }: { draft: Draft; toggle: (s: string) 
 }
 
 function GoalStep({ draft, patch }: { draft: Draft; patch: <K extends keyof Draft>(k: K, v: Draft[K]) => void }) {
-  const goals: { id: GoalId; name: string; detail: string; color: string }[] = [
-    { id: 'muscle', name: 'Build muscle', detail: 'High protein · slow lift progression', color: colors.accent },
-    { id: 'ride', name: '50-mile ride', detail: 'Cycling base · taper · maintenance lifts', color: colors.accentAlt },
-    { id: 'recover', name: 'Recover well', detail: 'Lighter load · sleep priority', color: colors.muted },
-  ];
+  const goals: { id: GoalId; name: string; detail: string; color: string }[] = Object.values(
+    TRACKING_PLANS,
+  ).map(p => ({ id: p.goalId, name: p.name, detail: p.detail, color: GOAL_COLOR[p.colorKey] }));
   const [picking, setPicking] = useState(false);
+
+  function toggleGoal(id: GoalId) {
+    const sel = draft.selectedGoals;
+    patch('selectedGoals', sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]);
+  }
 
   function onPickDate(_: DateTimePickerEvent, date?: Date) {
     if (Platform.OS !== 'ios') setPicking(false);
@@ -393,34 +532,73 @@ function GoalStep({ draft, patch }: { draft: Draft; patch: <K extends keyof Draf
 
   return (
     <View>
-      <StepHeader eyebrow="Step 3 of 5" title="What season are you in?" sub="The active goal shifts targets, briefings, and coaching tone." />
+      <StepHeader
+        eyebrow="Step 3 of 5"
+        title="What brought you here?"
+        sub="What goals or health adjustments are you after? Pick one or more — the first is your primary and drives your rings."
+      />
       <View style={{ gap: 10 }}>
         {goals.map(g => {
-          const active = draft.activeGoal === g.id;
+          const selected = draft.selectedGoals.includes(g.id);
+          const isPrimary = draft.selectedGoals[0] === g.id;
           return (
-            <Pressable key={g.id} onPress={() => patch('activeGoal', g.id)}>
-              <Card style={{ padding: 14, borderColor: active ? g.color : colors.line, borderWidth: active ? 1.5 : 0.5 }}>
+            <Pressable key={g.id} onPress={() => toggleGoal(g.id)}>
+              <Card style={{ padding: 14, borderColor: selected ? g.color : colors.line, borderWidth: selected ? 1.5 : 0.5 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <View style={{ width: 10, height: 10, borderRadius: 999, backgroundColor: g.color }} />
+                  <View
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 6,
+                      backgroundColor: selected ? g.color : 'transparent',
+                      borderWidth: selected ? 0 : 1,
+                      borderColor: colors.lineStrong,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {selected && <Text style={{ color: colors.surface, fontFamily: fonts.sansBold, fontSize: 12 }}>✓</Text>}
+                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontFamily: fonts.serifBold, fontSize: 17, color: colors.ink }}>{g.name}</Text>
                     <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 }}>{g.detail}</Text>
                   </View>
-                  {active && <Chip tone="accent">Active</Chip>}
+                  {isPrimary ? (
+                    <Chip tone="accent">Primary</Chip>
+                  ) : selected ? (
+                    <Chip>Tracking</Chip>
+                  ) : null}
                 </View>
               </Card>
             </Pressable>
           );
         })}
       </View>
-      {draft.activeGoal === 'ride' && (
+      {draft.selectedGoals.includes('ride') && (
         <Card style={{ padding: 14, marginTop: 10, backgroundColor: colors.accentAltSoft }}>
           <Text style={{ fontFamily: fonts.sansBold, fontSize: 10.5, color: colors.accentAlt, letterSpacing: 0.8 }}>
-            PIN THE DATE
+            NAME IT & PIN THE DATE
           </Text>
-          <Text style={{ fontFamily: fonts.serif, fontSize: 15.5, color: colors.ink, marginTop: 6, lineHeight: 22 }}>
+          <TextInput
+            value={draft.eventLabel}
+            onChangeText={t => patch('eventLabel', t)}
+            placeholder="Event — e.g. Chicago Marathon, 50-mile ride"
+            placeholderTextColor={colors.muted}
+            style={{
+              marginTop: 8,
+              padding: 12,
+              backgroundColor: colors.surface,
+              borderRadius: radii.sm,
+              borderWidth: 0.5,
+              borderColor: colors.line,
+              fontFamily: fonts.serif,
+              fontSize: 15,
+              color: colors.ink,
+            }}
+          />
+          <Text style={{ fontFamily: fonts.serif, fontSize: 15.5, color: colors.ink, marginTop: 10, lineHeight: 22 }}>
             {draft.rideTargetDate
-              ? `Riding ${formatDate(draft.rideTargetDate)} · ${daysUntil(draft.rideTargetDate)} days out.`
+              ? `${draft.eventLabel.trim() || 'Event'} on ${formatDate(draft.rideTargetDate)} · ${daysUntil(draft.rideTargetDate)} days out.`
               : 'A date locks in the ramp, peak week, and taper. You can change it anytime.'}
           </Text>
           <Pressable

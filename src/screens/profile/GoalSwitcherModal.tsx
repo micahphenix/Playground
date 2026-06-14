@@ -9,39 +9,26 @@ import { Card } from '../../components/Card';
 import { Chip } from '../../components/Chip';
 import { PillButton } from '../../components/PillButton';
 import { useData } from '../../data/DataContext';
+import { TRACKING_PLANS, selectedGoalIds } from '../../data/trackingPlans';
 import type { GoalId } from '../../data/types';
 
-const GOALS: {
-  id: GoalId;
-  name: string;
-  detail: string;
-  quote: string;
-  color: string;
-  dateNeeded?: boolean;
-}[] = [
-  {
-    id: 'muscle',
-    name: 'Build muscle',
-    detail: 'High protein · slow lift progression · cycling kept honest',
-    quote: 'You are building. Eat enough to grow, sleep enough to repair, lift enough to provoke.',
-    color: colors.accent,
-  },
-  {
-    id: 'ride',
-    name: '50-mile ride',
-    detail: 'Periodized cycling · taper · lift maintenance',
-    quote: 'You are building distance. Long rides earn their place; recovery is part of the work.',
-    color: colors.accentAlt,
-    dateNeeded: true,
-  },
-  {
-    id: 'recover',
-    name: 'Recover well',
-    detail: 'Lighter load · sleep priority · protein floor',
-    quote: 'You are mending. The body sets the pace; your job is to listen and feed it.',
-    color: colors.muted,
-  },
-];
+// One row per goal, derived from the single TrackingPlan registry.
+const COLOR_BY_KEY = {
+  accent: colors.accent,
+  accentAlt: colors.accentAlt,
+  muted: colors.muted,
+  good: colors.good,
+  warn: colors.warn,
+} as const;
+
+const GOALS = Object.values(TRACKING_PLANS).map(p => ({
+  id: p.goalId,
+  name: p.name,
+  detail: p.detail,
+  quote: p.quote,
+  color: COLOR_BY_KEY[p.colorKey],
+  dateNeeded: p.rideDateRelevant ?? false,
+}));
 
 export function GoalSwitcherModal() {
   const nav = useNavigation();
@@ -49,30 +36,54 @@ export function GoalSwitcherModal() {
   const [picking, setPicking] = useState(false);
   if (!profile) return null;
 
+  const selected = selectedGoalIds(profile);
+
   async function onPickDate(_: DateTimePickerEvent, date?: Date) {
     if (Platform.OS !== 'ios') setPicking(false);
     if (!date) return;
     await updateProfile({ rideTargetDate: date.toISOString().slice(0, 10) });
   }
 
+  async function toggleGoal(id: GoalId) {
+    if (!profile) return;
+    if (!selected.includes(id)) {
+      await updateProfile({ secondaryGoals: [...profile.secondaryGoals, id] });
+      return;
+    }
+    if (id === profile.activeGoal) {
+      // Removing the primary — promote the first secondary if there is one;
+      // never leave zero goals.
+      if (profile.secondaryGoals.length > 0) {
+        const [next, ...rest] = profile.secondaryGoals;
+        await updateProfile({ activeGoal: next, secondaryGoals: rest });
+      }
+      return;
+    }
+    await updateProfile({ secondaryGoals: profile.secondaryGoals.filter(x => x !== id) });
+  }
+
+  async function makePrimary(id: GoalId) {
+    if (!profile || id === profile.activeGoal) return;
+    await updateProfile({
+      activeGoal: id,
+      secondaryGoals: [profile.activeGoal, ...profile.secondaryGoals.filter(x => x !== id)],
+    });
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ModalHeader title="Active goal" sub="what guides this season" onClose={nav.goBack} />
+      <ModalHeader title="Your goals" sub="tap to track · first is primary" onClose={nav.goBack} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, gap: 12 }}>
         {GOALS.map(g => {
-          const active = profile.activeGoal === g.id;
+          const isSelected = selected.includes(g.id);
+          const isPrimary = profile.activeGoal === g.id;
           return (
-            <Pressable
-              key={g.id}
-              onPress={async () => {
-                await updateProfile({ activeGoal: g.id });
-              }}
-            >
+            <Pressable key={g.id} onPress={() => toggleGoal(g.id)}>
               <Card
                 style={{
                   padding: 16,
-                  borderColor: active ? g.color : colors.line,
-                  borderWidth: active ? 1.5 : 0.5,
+                  borderColor: isSelected ? g.color : colors.line,
+                  borderWidth: isSelected ? 1.5 : 0.5,
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -85,7 +96,13 @@ export function GoalSwitcherModal() {
                       {g.detail}
                     </Text>
                   </View>
-                  {active && <Chip tone="accent">Active</Chip>}
+                  {isPrimary ? (
+                    <Chip tone="accent">Primary</Chip>
+                  ) : isSelected ? (
+                    <Pressable onPress={() => makePrimary(g.id)} hitSlop={8}>
+                      <Chip>Make primary</Chip>
+                    </Pressable>
+                  ) : null}
                 </View>
                 <Text
                   style={{

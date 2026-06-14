@@ -2,7 +2,9 @@
 // Designed to round-trip cleanly through JSON for export and the future
 // Supabase / Notion adapters.
 
-export type GoalId = 'muscle' | 'ride' | 'recover';
+// 'ride' is the date-pinned "Specific challenge" goal (marathon, ride, race —
+// any event periodized to a date). Kept as 'ride' for back-compat.
+export type GoalId = 'muscle' | 'ride' | 'recover' | 'weightloss' | 'tone' | 'other';
 
 export type CoachTone = 'warm-stewardship' | 'plainspoken' | 'direct';
 
@@ -10,16 +12,21 @@ export interface Profile {
   name: string;
   age: number;
   location: string;
-  // Stewardship framing — affects coach voice.
-  faithFraming: boolean;
-  protein_g_target: number;
-  calories_target: number;
+  // Ring targets, weekly checklist, watched patterns, and briefing emphasis
+  // are derived from the active goal's TrackingPlan — see trackingPlans.ts.
   // Hard constraints — the coach never violates these.
   constraints: string[];
   // Notes that auto-expire unless re-confirmed.
   limitations: Limitation[];
+  // The primary goal — drives the rings/targets.
   activeGoal: GoalId;
+  // Additional goals tracked alongside the primary. The primary's plan drives
+  // the rings; secondaries contribute their checklist items + watched patterns.
+  secondaryGoals: GoalId[];
+  // The date-pinned challenge: when (rideTargetDate) and what (eventLabel,
+  // e.g. "Chicago Marathon"). Only meaningful for the 'ride' goal.
   rideTargetDate: string | null;
+  eventLabel: string | null;
   notifications: {
     morningBriefingTime: string; // "07:30"
     enabled: boolean;

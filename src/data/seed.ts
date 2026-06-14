@@ -16,17 +16,24 @@ export function defaultProfile(): Profile {
     name: 'Aaron',
     age: 33,
     location: 'Euless, TX',
-    faithFraming: true,
-    protein_g_target: 185,
-    calories_target: 2600,
     constraints: [
-      'Knee replacement (Aug 2025) — squats off-limits, hard constraint',
+      'Knee replacement (Aug 2025) — no loaded squats yet; progressing through rehab toward barbell squats/deadlifts (ortho-cleared June 2026)',
       'GERD — no heavy meals after 8 PM',
       'Connective tissue adapts slowly post-op',
     ],
-    limitations: [],
+    limitations: [
+      {
+        id: uuid(),
+        label: 'Right calf strain',
+        note: 'Active — flares on longer rides; ease load and watch it',
+        addedAt: new Date().toISOString(),
+        expiresAt: null,
+      },
+    ],
     activeGoal: 'muscle',
+    secondaryGoals: [],
     rideTargetDate: null,
+    eventLabel: null,
     notifications: { morningBriefingTime: '07:30', enabled: true },
     tone: 'warm-stewardship',
     createdAt: new Date().toISOString(),
@@ -92,7 +99,7 @@ export function seedMemory(): MemoryItem[] {
   const now = new Date().toISOString();
   return [
     { id: uuid(), kind: 'fact', headline: 'Knee replacement', detail: 'Aug 2025 · 8 mo post-op', createdAt: now },
-    { id: uuid(), kind: 'fact', headline: 'Squats', detail: 'Off-limits · hard constraint', createdAt: now },
+    { id: uuid(), kind: 'fact', headline: 'Squats', detail: 'No loaded squats yet · rehab toward barbell work', createdAt: now },
     { id: uuid(), kind: 'fact', headline: 'GERD', detail: 'Affects timing of late meals', createdAt: now },
     { id: uuid(), kind: 'fact', headline: 'Protein target', detail: '185 g/day', createdAt: now },
     { id: uuid(), kind: 'fact', headline: 'Maintenance', detail: '~2,600 kcal/day', createdAt: now },

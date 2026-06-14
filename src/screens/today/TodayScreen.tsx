@@ -16,19 +16,16 @@ import { CoachMark } from '../../components/CoachMark';
 import { ConcentricRings } from '../../components/Ring';
 import { Composer } from '../../components/Composer';
 import { AccentText } from '../../components/AccentText';
+import { VoiceRecorder } from '../../components/VoiceRecorder';
 import { useData } from '../../data/DataContext';
 import { sumDayTotals } from '../../data/totals';
+import { trackingPlanFor } from '../../data/trackingPlans';
 import { analyzeMealPhoto, generateBriefing, parseFreeform, hasApiKey } from '../../ai/coach';
+import { hasTranscriptionKey, transcribe } from '../../ai/transcribe';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import type { LogEntry } from '../../data/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-const GOAL_LABEL: Record<string, string> = {
-  muscle: 'build muscle · week 4',
-  ride: '50-mi build · week 4',
-  recover: 'recover · steady',
-};
 
 export function TodayScreen() {
   const nav = useNavigation<Nav>();
@@ -36,6 +33,8 @@ export function TodayScreen() {
   const [composerText, setComposerText] = useState('');
   const [working, setWorking] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const plan = trackingPlanFor(profile?.activeGoal ?? 'muscle');
 
   async function regenerate() {
     if (!profile) return;
@@ -137,14 +136,39 @@ export function TodayScreen() {
     if (res.canceled || !res.assets[0]) return;
     await runPhotoAnalysis(res.assets[0].uri);
   }
-  async function pickPhoto() {
+  function startVoice() {
+    if (!hasTranscriptionKey()) {
+      Alert.alert(
+        'Voice not configured',
+        'Set EXPO_PUBLIC_OPENAI_API_KEY in .env to enable voice transcription (Whisper). You can still type entries.',
+      );
+      return;
+    }
+    setRecording(true);
+  }
+  async function onVoiceDone(uri: string, durationSec: number) {
+    setRecording(false);
     if (!profile) return;
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.6,
-    });
-    if (res.canceled || !res.assets[0]) return;
-    await runPhotoAnalysis(res.assets[0].uri);
+    if (!hasApiKey()) {
+      Alert.alert('Coach offline', 'Set EXPO_PUBLIC_ANTHROPIC_API_KEY in .env to parse what you said.');
+      return;
+    }
+    setWorking(true);
+    try {
+      const { text: said } = await transcribe(uri, durationSec);
+      if (!said) return;
+      const parse = await parseFreeform(said, {
+        profile,
+        recentLog: log,
+        openPatterns: patterns.filter(p => p.status === 'open'),
+      });
+      // Voice + text share the confirm modal — same path as sendText.
+      nav.navigate('VoiceConfirm', { transcript: said, durationSec, entries: parse.entries });
+    } catch (e: unknown) {
+      Alert.alert("Couldn't transcribe", e instanceof Error ? e.message : 'Try again.');
+    } finally {
+      setWorking(false);
+    }
   }
   async function runPhotoAnalysis(uri: string) {
     if (!profile) return;
@@ -171,7 +195,7 @@ export function TodayScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <TopBar title={dateLabel.day} sub={`${dateLabel.month} · ${GOAL_LABEL[profile?.activeGoal ?? 'muscle']}`} />
+      <TopBar title={dateLabel.day} sub={`${dateLabel.month} · ${plan.name.toLowerCase()}`} />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 24 }}
         keyboardShouldPersistTaps="handled"
@@ -238,7 +262,7 @@ export function TodayScreen() {
           </>
         )}
 
-        <RingsRow protein={todays.protein} calories={todays.kcal} targetP={profile?.protein_g_target ?? 185} targetC={profile?.calories_target ?? 2600} />
+        <RingsRow protein={todays.protein} calories={todays.kcal} targetP={plan.rings.protein_g} targetC={plan.rings.calories} />
 
         <View style={{ paddingTop: 14, paddingHorizontal: 16 }}>
           <Label style={{ marginBottom: 8, paddingLeft: 4 }}>Recent</Label>
@@ -291,10 +315,11 @@ export function TodayScreen() {
         onChangeText={setComposerText}
         onSend={sendText}
         onCamera={takePhoto}
-        onMic={pickPhoto}
+        onMic={startVoice}
         disabled={working}
         placeholder={working ? 'Reading…' : 'Let me know how I can help…'}
       />
+      <VoiceRecorder visible={recording} onCancel={() => setRecording(false)} onComplete={onVoiceDone} />
     </View>
   );
 }

@@ -163,7 +163,8 @@ export function MemoryScreen() {
                 style={({ pressed }) => ({
                   flexDirection: 'row',
                   padding: 14,
-                  alignItems: 'center',
+                  alignItems: 'flex-start',
+                  gap: 12,
                   borderBottomWidth: i < arr.length - 1 ? 0.5 : 0,
                   borderBottomColor: colors.line,
                   backgroundColor: pressed ? colors.surfaceAlt : 'transparent',
@@ -172,9 +173,20 @@ export function MemoryScreen() {
                 <Text style={{ flex: 1, fontFamily: fonts.serif, fontSize: 14, color: colors.ink }}>
                   {row.headline}
                 </Text>
-                <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.body, textAlign: 'right' }}>
-                  {row.detail}
-                </Text>
+                {!!row.detail && (
+                  <Text
+                    style={{
+                      flexShrink: 1,
+                      maxWidth: '52%',
+                      fontFamily: fonts.sans,
+                      fontSize: 12,
+                      color: colors.body,
+                      textAlign: 'right',
+                    }}
+                  >
+                    {row.detail}
+                  </Text>
+                )}
               </Pressable>
             ))}
             {filteredMemory.length === 0 && (

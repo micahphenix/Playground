@@ -12,7 +12,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.bodysteward.app",
+      "bundleIdentifier": "com.micahphenix.steward",
       "infoPlist": {
         "NSCameraUsageDescription": "Steward uses your camera to log meals from photos.",
         "NSPhotoLibraryUsageDescription": "Steward reads meal photos from your library to log them.",
@@ -22,14 +22,29 @@
       }
     },
     "android": {
-      "package": "com.bodysteward.app",
-      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "RECORD_AUDIO"]
+      "package": "com.micahphenix.steward",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "RECORD_AUDIO"
+      ]
     },
     "plugins": [
-      ["expo-camera", { "cameraPermission": "Steward uses your camera to log meals from photos." }],
-      ["expo-image-picker", { "photosPermission": "Steward reads meal photos from your library to log them." }],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Steward uses your camera to log meals from photos."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Steward reads meal photos from your library to log them."
+        }
+      ],
       "expo-notifications",
-      "expo-font"
+      "expo-font",
+      "expo-asset"
     ],
     "extra": {}
   }

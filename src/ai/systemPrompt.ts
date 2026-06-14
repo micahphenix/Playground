@@ -1,4 +1,10 @@
 import type { LogEntry, PatternFlag, Profile } from '../data/types';
+import {
+  activeTrackingPlan,
+  selectedTrackingPlans,
+  mergedChecklist,
+  mergedPatternsToWatch,
+} from '../data/trackingPlans';
 
 // The handoff is explicit about what must be in every system prompt:
 // static profile, dynamic profile, trend context, pattern memory, tone.
@@ -25,6 +31,17 @@ export function buildSystemPrompt({ profile, recentLog, openPatterns }: BuildArg
     ? openPatterns.map(p => `  - ${p.topic} — ${p.summary} (${p.status})`).join('\n')
     : '  - (none open)';
 
+  const plan = activeTrackingPlan(profile);
+  const secondaryNames = selectedTrackingPlans(profile)
+    .slice(1)
+    .map(p => p.name);
+  const checklist = mergedChecklist(profile)
+    .map(c => `  - ${c.label}${c.detail ? ` (${c.detail})` : ''}`)
+    .join('\n');
+  const watching = mergedPatternsToWatch(profile)
+    .map(p => `  - ${p}`)
+    .join('\n');
+
   return [
     `You are Steward, a personal body-stewardship coach for ${profile.name}.`,
     '',
@@ -42,8 +59,16 @@ export function buildSystemPrompt({ profile, recentLog, openPatterns }: BuildArg
     '',
     'PROFILE',
     `  ${profile.age} yo · ${profile.location}`,
-    `  Protein target ${profile.protein_g_target} g/day · Maintenance ${profile.calories_target} kcal/day`,
-    `  Active goal: ${profile.activeGoal}${profile.rideTargetDate ? ` (target ${profile.rideTargetDate})` : ''}`,
+    `  Protein target ${plan.rings.protein_g} g/day · Maintenance ${plan.rings.calories} kcal/day`,
+    `  Primary goal: ${plan.name}${profile.eventLabel ? ` — ${profile.eventLabel}` : ''}${profile.rideTargetDate ? ` (target ${profile.rideTargetDate})` : ''}`,
+    secondaryNames.length ? `  Also tracking: ${secondaryNames.join(', ')}` : '  Also tracking: (none)',
+    `  Emphasis: ${plan.briefingEmphasis}`,
+    '',
+    'GOALS — WEEKLY CHECKLIST',
+    checklist,
+    '',
+    'GOALS — PATTERNS TO WATCH',
+    watching,
     '',
     'RECENT LOG (most recent first)',
     recent || '  - (empty)',

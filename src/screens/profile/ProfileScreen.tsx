@@ -10,7 +10,9 @@ import { TopBar } from '../../components/TopBar';
 import { Card } from '../../components/Card';
 import { Label } from '../../components/Label';
 import { useData } from '../../data/DataContext';
+import { TRACKING_PLANS } from '../../data/trackingPlans';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
+import type { GoalId } from '../../data/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -233,15 +235,6 @@ function Row({ row, last }: { row: RowDef; last: boolean }) {
   );
 }
 
-function goalLabel(g: string) {
-  switch (g) {
-    case 'muscle':
-      return 'Build muscle';
-    case 'ride':
-      return '50-mile ride';
-    case 'recover':
-      return 'Recover well';
-    default:
-      return g;
-  }
+function goalLabel(g: GoalId) {
+  return TRACKING_PLANS[g].name;
 }

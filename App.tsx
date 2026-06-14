@@ -1,6 +1,8 @@
 import 'react-native-gesture-handler';
 import 'react-native-get-random-values';
+import { registerRootComponent } from 'expo';
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
@@ -53,17 +55,28 @@ export default function App() {
   const ready = serifReady && sansReady && monoReady;
 
   return (
-    <SafeAreaProvider>
-      <StatusBar style="dark" />
-      {ready ? (
-        <DataProvider>
-          <NavigationContainer theme={navTheme}>
-            <RootNavigator />
-          </NavigationContainer>
-        </DataProvider>
-      ) : (
-        <SplashView />
-      )}
-    </SafeAreaProvider>
+    // Required root for react-native-gesture-handler — without it, gesture/
+    // touch handling (including ScrollView) is dead app-wide on the New
+    // Architecture. Must be the outermost view and fill the screen.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <StatusBar style="dark" />
+        {ready ? (
+          <DataProvider>
+            <NavigationContainer theme={navTheme}>
+              <RootNavigator />
+            </NavigationContainer>
+          </DataProvider>
+        ) : (
+          <SplashView />
+        )}
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
+
+// `package.json` points "main" directly at this file, so this file is the
+// app entry — it must register the root component itself (there is no
+// index.js / expo AppEntry shim). Without this the bundle loads but "main"
+// is never registered → "App entry not found".
+registerRootComponent(App);
