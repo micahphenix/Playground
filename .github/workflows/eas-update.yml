@@ -1,0 +1,35 @@
+name: EAS Update (OTA)
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: eas-update-main
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: npm ci
+
+      - name: Typecheck and test
+        run: |
+          npx tsc --noEmit
+          npx jest --ci
+
+      - name: Publish OTA update
+        run: eas update --channel production --auto --non-interactive

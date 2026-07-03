@@ -4,6 +4,14 @@
     "slug": "body-steward",
     "version": "0.1.0",
     "orientation": "portrait",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 15000
+    },
     "userInterfaceStyle": "light",
     "scheme": "steward",
     "splash": {
