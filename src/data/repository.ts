@@ -2,6 +2,7 @@ import type {
   Briefing,
   LogEntry,
   MemoryItem,
+  Message,
   PatternFlag,
   Profile,
   WeeklyRecap,
@@ -34,6 +35,11 @@ export interface Repository {
 
   listRecaps(): Promise<WeeklyRecap[]>;
   addRecap(r: WeeklyRecap): Promise<void>;
+
+  // Chat transcript — persisted so the coach keeps conversational context
+  // across app launches. Oldest first. Implementations cap the stored count.
+  listMessages(): Promise<Message[]>;
+  addMessage(m: Message): Promise<void>;
 
   // Today's briefing
   getBriefing(): Promise<Briefing | null>;

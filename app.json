@@ -11,8 +11,11 @@
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 15000,
-      "url": "https://u.expo.dev/c3016d53-62d3-4964-b812-dae697d4d756"
+      "fallbackToCacheTimeout": 3000,
+      "url": "https://u.expo.dev/c3016d53-62d3-4964-b812-dae697d4d756",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
     },
     "userInterfaceStyle": "light",
     "scheme": "steward",

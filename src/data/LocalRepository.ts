@@ -4,6 +4,7 @@ import type {
   Briefing,
   LogEntry,
   MemoryItem,
+  Message,
   PatternFlag,
   Profile,
   WeeklyRecap,
@@ -25,7 +26,12 @@ const K = {
   patterns: 'steward.patterns',
   recaps: 'steward.recaps',
   briefing: 'steward.briefing',
+  messages: 'steward.messages',
 } as const;
+
+// Chat transcript cap. Enough for the coach's 12-turn context window plus a
+// scrollback the user can actually read, without letting storage grow forever.
+const MAX_MESSAGES = 200;
 
 async function get<T>(key: string, fallback: T): Promise<T> {
   const raw = await AsyncStorage.getItem(key);
@@ -117,6 +123,15 @@ export class LocalRepository implements Repository {
     await put(K.recaps, [r, ...all]);
   }
 
+  async listMessages(): Promise<Message[]> {
+    return get<Message[]>(K.messages, []);
+  }
+  async addMessage(m: Message): Promise<void> {
+    const all = await get<Message[]>(K.messages, []);
+    const next = [...all, m];
+    await put(K.messages, next.slice(-MAX_MESSAGES));
+  }
+
   async getBriefing(): Promise<Briefing | null> {
     return get<Briefing | null>(K.briefing, null);
   }
@@ -135,6 +150,7 @@ export class LocalRepository implements Repository {
       patterns: await this.listPatterns(),
       recaps: await this.listRecaps(),
       briefing: await this.getBriefing(),
+      messages: await this.listMessages(),
     };
   }
 }

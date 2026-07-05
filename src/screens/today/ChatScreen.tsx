@@ -22,7 +22,7 @@ import { Card } from '../../components/Card';
 import { PhotoStripe } from '../../components/PhotoStripe';
 import { VoiceRecorder } from '../../components/VoiceRecorder';
 import { useData } from '../../data/DataContext';
-import { analyzeMealPhoto, interpret, hasApiKey } from '../../ai/coach';
+import { analyzeMealPhoto, interpret, hasApiKey, type ChatMessageIn } from '../../ai/coach';
 import { hasTranscriptionKey, transcribe } from '../../ai/transcribe';
 import type { Message, PatternFlag } from '../../data/types';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
@@ -31,9 +31,22 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function ChatScreen() {
   const nav = useNavigation<Nav>();
-  const { profile, log, patterns } = useData();
-  const [messages, setMessages] = useState<Message[]>(() => seedMessages());
+  const { profile, log, patterns, chatMessages, addChatMessage } = useData();
+  // Resume the persisted transcript; the greeting only seeds a fresh install.
+  const [messages, setMessages] = useState<Message[]>(() =>
+    chatMessages.length ? chatMessages : seedMessages(),
+  );
   const [text, setText] = useState('');
+
+  // Append to screen state and persist through the repository. Fire-and-forget
+  // on the write — chat must not block on storage.
+  const pushMessage = useCallback(
+    (m: Message) => {
+      setMessages(prev => [...prev, m]);
+      addChatMessage(m).catch(() => {});
+    },
+    [addChatMessage],
+  );
   const hasUserActivity = messages.some(m => m.role === 'user');
   const [thinking, setThinking] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -51,29 +64,26 @@ export function ChatScreen() {
   const send = useCallback(async () => {
     if (!text.trim() || !profile) return;
     const userText = text;
+    // History is the transcript BEFORE this message — the new text goes in as
+    // the live user turn.
+    const history = toHistory(messages);
     const userMsg: Message = { id: uuid(), role: 'user', text: userText, createdAt: new Date().toISOString() };
-    setMessages(m => [...m, userMsg]);
+    pushMessage(userMsg);
     setText('');
     if (!hasApiKey()) {
-      setMessages(m => [
-        ...m,
-        {
-          id: uuid(),
-          role: 'coach',
-          text: "I'm offline right now — set EXPO_PUBLIC_ANTHROPIC_API_KEY and restart Expo to hear me back.",
-          createdAt: new Date().toISOString(),
-        },
-      ]);
+      pushMessage({
+        id: uuid(),
+        role: 'coach',
+        text: "I'm offline right now — set EXPO_PUBLIC_ANTHROPIC_API_KEY and restart Expo to hear me back.",
+        createdAt: new Date().toISOString(),
+      });
       return;
     }
     setThinking(true);
     try {
-      const result = await interpret(userText, ctx);
+      const result = await interpret(userText, ctx, history);
       // Always append the conversational reply first so the chat reads naturally.
-      setMessages(m => [
-        ...m,
-        { id: uuid(), role: 'coach', text: result.reply, createdAt: new Date().toISOString() },
-      ]);
+      pushMessage({ id: uuid(), role: 'coach', text: result.reply, createdAt: new Date().toISOString() });
       // If the message contained loggable entries, route to the confirm flow.
       if (result.entries.length > 0) {
         nav.navigate('VoiceConfirm', {
@@ -83,20 +93,17 @@ export function ChatScreen() {
         });
       }
     } catch (e: unknown) {
-      setMessages(m => [
-        ...m,
-        {
-          id: uuid(),
-          role: 'coach',
-          text: `Something tripped on the way: ${e instanceof Error ? e.message : 'unknown'}.`,
-          createdAt: new Date().toISOString(),
-        },
-      ]);
+      pushMessage({
+        id: uuid(),
+        role: 'coach',
+        text: `Something tripped on the way: ${e instanceof Error ? e.message : 'unknown'}.`,
+        createdAt: new Date().toISOString(),
+      });
     } finally {
       setThinking(false);
       requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     }
-  }, [text, profile, ctx, nav]);
+  }, [text, profile, ctx, nav, messages, pushMessage]);
 
   async function attachPhoto() {
     if (!profile) return;
@@ -107,7 +114,7 @@ export function ChatScreen() {
     if (res.canceled || !res.assets[0]) return;
     const uri = res.assets[0].uri;
     const userMsg: Message = { id: uuid(), role: 'user', photoUri: uri, createdAt: new Date().toISOString() };
-    setMessages(m => [...m, userMsg]);
+    pushMessage(userMsg);
     if (!hasApiKey()) {
       Alert.alert('Coach offline', 'Set EXPO_PUBLIC_ANTHROPIC_API_KEY in .env to enable photo analysis.');
       return;
@@ -142,22 +149,20 @@ export function ChatScreen() {
     try {
       const { text: said } = await transcribe(uri, durationSec);
       // Treat the transcript as if the user typed it — same interpret path.
+      const history = toHistory(messages);
       const userMsg: Message = {
         id: uuid(),
         role: 'user',
         text: said || '[empty recording]',
         createdAt: new Date().toISOString(),
       };
-      setMessages(m => [...m, userMsg]);
+      pushMessage(userMsg);
       if (!said) {
         setThinking(false);
         return;
       }
-      const result = await interpret(said, ctx);
-      setMessages(m => [
-        ...m,
-        { id: uuid(), role: 'coach', text: result.reply, createdAt: new Date().toISOString() },
-      ]);
+      const result = await interpret(said, ctx, history);
+      pushMessage({ id: uuid(), role: 'coach', text: result.reply, createdAt: new Date().toISOString() });
       if (result.entries.length > 0) {
         nav.navigate('VoiceConfirm', {
           transcript: said,
@@ -314,6 +319,15 @@ function Dot({ delay }: { delay: number }) {
   return (
     <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent, opacity: on ? 1 : 0.35 }} />
   );
+}
+
+// Project screen messages into API turns. Pattern cards and photo-only
+// bubbles carry no text the model can use; system messages aren't part of the
+// user/assistant alternation.
+function toHistory(msgs: Message[]): ChatMessageIn[] {
+  return msgs
+    .filter(m => m.text && !m.patternFlagId && (m.role === 'user' || m.role === 'coach'))
+    .map(m => ({ role: m.role === 'user' ? ('user' as const) : ('assistant' as const), content: m.text! }));
 }
 
 function seedMessages(): Message[] {
