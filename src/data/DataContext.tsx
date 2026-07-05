@@ -1,7 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { localRepo } from './LocalRepository';
 import { scheduleMorningBriefing } from '../services/notifications';
-import type { Briefing, LogEntry, MemoryItem, PatternFlag, Profile, WeeklyRecap } from './types';
+import { runDailyBackup } from '../services/backup';
+import type { Briefing, LogEntry, MemoryItem, Message, PatternFlag, Profile, WeeklyRecap } from './types';
 
 interface DataState {
   ready: boolean;
@@ -12,6 +13,7 @@ interface DataState {
   patterns: PatternFlag[];
   recaps: WeeklyRecap[];
   briefing: Briefing | null;
+  chatMessages: Message[];
   refresh: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
   updateProfile: (patch: Partial<Profile>) => Promise<void>;
@@ -22,6 +24,7 @@ interface DataState {
   removeMemory: (id: string) => Promise<void>;
   upsertPattern: (p: PatternFlag) => Promise<void>;
   addRecap: (r: WeeklyRecap) => Promise<void>;
+  addChatMessage: (m: Message) => Promise<void>;
   dismissBriefing: () => Promise<void>;
   restoreBriefing: () => Promise<void>;
   setBriefing: (b: Briefing | null) => Promise<void>;
@@ -39,18 +42,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [patterns, setPatterns] = useState<PatternFlag[]>([]);
   const [recaps, setRecaps] = useState<WeeklyRecap[]>([]);
   const [briefing, setBriefing] = useState<Briefing | null>(null);
+  const [chatMessages, setChatMessages] = useState<Message[]>([]);
 
   const refresh = useCallback(async () => {
     const done = await localRepo.isOnboarded();
     setOnboarded(done);
     if (done) {
-      const [p, l, m, pat, r, b] = await Promise.all([
+      const [p, l, m, pat, r, b, msgs] = await Promise.all([
         localRepo.getProfile(),
         localRepo.listLog(),
         localRepo.listMemory(),
         localRepo.listPatterns(),
         localRepo.listRecaps(),
         localRepo.getBriefing(),
+        localRepo.listMessages(),
       ]);
       setProfile(p);
       setLog(l);
@@ -58,7 +63,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setPatterns(pat);
       setRecaps(r);
       setBriefing(b);
+      setChatMessages(msgs);
       scheduleMorningBriefing(p.notifications.morningBriefingTime, p.notifications.enabled).catch(() => {});
+      // Best-effort daily snapshot; see services/backup.ts.
+      runDailyBackup(() => localRepo.exportAll());
     }
   }, []);
 
@@ -76,6 +84,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       patterns,
       recaps,
       briefing,
+      chatMessages,
       refresh,
       async completeOnboarding() {
         await localRepo.markOnboarded();
@@ -116,6 +125,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         await localRepo.addRecap(r);
         setRecaps(await localRepo.listRecaps());
       },
+      async addChatMessage(m) {
+        await localRepo.addMessage(m);
+        setChatMessages(prev => [...prev, m]);
+      },
       async dismissBriefing() {
         if (!briefing) return;
         const next = { ...briefing, dismissed: true };
@@ -136,7 +149,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return localRepo.exportAll();
       },
     }),
-    [ready, onboarded, profile, log, memory, patterns, recaps, briefing, refresh],
+    [ready, onboarded, profile, log, memory, patterns, recaps, briefing, chatMessages, refresh],
   );
 
   return <DataCtx.Provider value={value}>{children}</DataCtx.Provider>;

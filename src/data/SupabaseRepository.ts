@@ -3,6 +3,7 @@ import type {
   Briefing,
   LogEntry,
   MemoryItem,
+  Message,
   PatternFlag,
   Profile,
   WeeklyRecap,
@@ -73,6 +74,12 @@ export class SupabaseRepository implements Repository {
     return this.notWired();
   }
   addRecap(_: WeeklyRecap): Promise<void> {
+    return this.notWired();
+  }
+  listMessages(): Promise<Message[]> {
+    return this.notWired();
+  }
+  addMessage(_: Message): Promise<void> {
     return this.notWired();
   }
   getBriefing(): Promise<Briefing | null> {

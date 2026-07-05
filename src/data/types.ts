@@ -107,7 +107,8 @@ export interface WeeklyRecap {
   createdAt: string;
 }
 
-// Conversation — Today / chat. Not persisted long-term in v0.1.
+// Conversation — Today / chat. Persisted via the Repository (capped) so the
+// coach keeps conversational context across launches.
 export type Role = 'user' | 'coach' | 'system';
 
 export interface Message {

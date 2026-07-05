@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { LogEntry, MealItem, PatternFlag, Profile } from '../data/types';
 import { buildSystemPrompt } from './systemPrompt';
+import { weekSummaryBlock } from '../data/weekSummary';
 import { parseJsonish } from './json';
 
 // Single point of contact with Anthropic. Screens never import the SDK directly.
@@ -10,7 +11,16 @@ import { parseJsonish } from './json';
 // a baseURL override).
 
 const API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY;
-const MODEL = 'claude-opus-4-7';
+
+// Two tiers. Synthesis calls (chat, briefing, recap, pattern scan) get the
+// full Opus model — quality shows there. Extraction calls (interpret, parse,
+// photo) get Sonnet: same structured output, much lower latency per message.
+// Sonnet 5 runs adaptive thinking when `thinking` is omitted, so the
+// extraction paths disable it explicitly to keep replies snappy and stop
+// thinking tokens from eating the max_tokens budget before the JSON lands.
+const MODEL = 'claude-opus-4-8';
+const FAST_MODEL = 'claude-sonnet-5';
+const NO_THINKING = { type: 'disabled' } as const;
 
 let client: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -77,7 +87,8 @@ Be honest about uncertainty in the description. If something is occluded, say so
 
 export async function analyzeMealPhoto(base64Jpeg: string, ctx: CoachContext): Promise<PhotoAnalysis> {
   const res = await getClient().messages.create({
-    model: MODEL,
+    model: FAST_MODEL,
+    thinking: NO_THINKING,
     max_tokens: 800,
     system: buildSystemPrompt(ctx) + '\n\n' + PHOTO_PROMPT,
     messages: [
@@ -143,7 +154,8 @@ Shape:
 
 export async function parseFreeform(raw: string, ctx: CoachContext): Promise<ParseResult> {
   const res = await getClient().messages.create({
-    model: MODEL,
+    model: FAST_MODEL,
+    thinking: NO_THINKING,
     max_tokens: 800,
     system: buildSystemPrompt(ctx) + '\n\n' + PARSE_PROMPT,
     messages: [{ role: 'user', content: raw }],
@@ -196,12 +208,27 @@ Rules:
 - If they mentioned an injury or limitation ("tweaked my calf", "knee's grumbling"), put it in entries[].proposedLimitation.
 - Don't ask clarifying questions in reply unless something critical is missing.`;
 
-export async function interpret(raw: string, ctx: CoachContext): Promise<InterpretResult> {
+// `history` is the running conversation (older turns first). Without it every
+// message stands alone and follow-ups like "what about dinner instead?" lose
+// their referent. Capped to the last 12 turns to bound tokens.
+export async function interpret(
+  raw: string,
+  ctx: CoachContext,
+  history: ChatMessageIn[] = [],
+): Promise<InterpretResult> {
+  // The API requires the first message to be a user turn — drop leading
+  // assistant turns (the seeded greeting) after windowing.
+  const window = history.slice(-12);
+  while (window.length && window[0].role !== 'user') window.shift();
   const res = await getClient().messages.create({
-    model: MODEL,
+    model: FAST_MODEL,
+    thinking: NO_THINKING,
     max_tokens: 800,
     system: buildSystemPrompt(ctx) + '\n\n' + INTERPRET_PROMPT,
-    messages: [{ role: 'user', content: raw }],
+    messages: [
+      ...window.map(m => ({ role: m.role, content: m.content })),
+      { role: 'user' as const, content: raw },
+    ],
   });
   const text = res.content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -319,7 +346,7 @@ export async function generateRecap(ctx: CoachContext): Promise<RecapDraft> {
   const res = await getClient().messages.create({
     model: MODEL,
     max_tokens: 900,
-    system: buildSystemPrompt(ctx) + '\n\n' + RECAP_PROMPT,
+    system: buildSystemPrompt(ctx) + '\n\n' + weekSummaryBlock(ctx.recentLog) + '\n\n' + RECAP_PROMPT,
     messages: [{ role: 'user', content: "Recap the past week." }],
   });
   const text = res.content
@@ -334,7 +361,7 @@ export async function detectPatterns(ctx: CoachContext): Promise<PatternCandidat
   const res = await getClient().messages.create({
     model: MODEL,
     max_tokens: 600,
-    system: buildSystemPrompt(ctx) + '\n\n' + PATTERN_PROMPT,
+    system: buildSystemPrompt(ctx) + '\n\n' + weekSummaryBlock(ctx.recentLog) + '\n\n' + PATTERN_PROMPT,
     messages: [{ role: 'user', content: 'Scan for patterns.' }],
   });
   const text = res.content
