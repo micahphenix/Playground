@@ -33,3 +33,10 @@ jobs:
 
       - name: Publish OTA update
         run: eas update --channel production --auto --non-interactive
+        # EXPO_PUBLIC_* vars are inlined into the JS bundle at export time.
+        # Locally they come from .env (gitignored); in CI they must come from
+        # repo secrets or the published bundle ships with EMPTY keys and the
+        # coach goes offline on every device that applies the update.
+        env:
+          EXPO_PUBLIC_ANTHROPIC_API_KEY: ${{ secrets.EXPO_PUBLIC_ANTHROPIC_API_KEY }}
+          EXPO_PUBLIC_OPENAI_API_KEY: ${{ secrets.EXPO_PUBLIC_OPENAI_API_KEY }}
