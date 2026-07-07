@@ -11,7 +11,6 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { v4 as uuid } from 'uuid';
-import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { colors, fonts } from '../../theme';
 import { TopBar } from '../../components/TopBar';
@@ -24,6 +23,7 @@ import { VoiceRecorder } from '../../components/VoiceRecorder';
 import { useData } from '../../data/DataContext';
 import { analyzeMealPhoto, interpret, hasApiKey, type ChatMessageIn } from '../../ai/coach';
 import { hasTranscriptionKey, transcribe } from '../../ai/transcribe';
+import { pickMealPhoto } from '../../services/photoPicker';
 import type { Message, PatternFlag } from '../../data/types';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 
@@ -107,12 +107,8 @@ export function ChatScreen() {
 
   async function attachPhoto() {
     if (!profile) return;
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.6,
-    });
-    if (res.canceled || !res.assets[0]) return;
-    const uri = res.assets[0].uri;
+    const uri = await pickMealPhoto();
+    if (!uri) return;
     const userMsg: Message = { id: uuid(), role: 'user', photoUri: uri, createdAt: new Date().toISOString() };
     pushMessage(userMsg);
     if (!hasApiKey()) {

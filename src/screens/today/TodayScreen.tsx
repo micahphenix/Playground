@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { v4 as uuid } from 'uuid';
 import * as Haptics from 'expo-haptics';
-import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import Svg, { Path } from 'react-native-svg';
 import { colors, fonts, radii, type } from '../../theme';
@@ -22,6 +21,7 @@ import { sumDayTotals } from '../../data/totals';
 import { trackingPlanFor } from '../../data/trackingPlans';
 import { analyzeMealPhoto, generateBriefing, parseFreeform, hasApiKey } from '../../ai/coach';
 import { hasTranscriptionKey, transcribe } from '../../ai/transcribe';
+import { pickMealPhoto } from '../../services/photoPicker';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import type { LogEntry } from '../../data/types';
 
@@ -123,18 +123,8 @@ export function TodayScreen() {
 
   async function takePhoto() {
     if (!profile) return;
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Camera off', 'Enable camera access in Settings to log meals from photos.');
-      return;
-    }
-    const res = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.6,
-      base64: false,
-    });
-    if (res.canceled || !res.assets[0]) return;
-    await runPhotoAnalysis(res.assets[0].uri);
+    const uri = await pickMealPhoto();
+    if (uri) await runPhotoAnalysis(uri);
   }
   function startVoice() {
     if (!hasTranscriptionKey()) {
@@ -196,6 +186,12 @@ export function TodayScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <TopBar title={dateLabel.day} sub={`${dateLabel.month} · ${plan.name.toLowerCase()}`} />
+      {/* Without this the keyboard slides over the composer and the user
+          types blind — first defect of the July 6 validation window. */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <ScrollView
         contentContainerStyle={{ paddingBottom: 24 }}
         keyboardShouldPersistTaps="handled"
@@ -319,6 +315,7 @@ export function TodayScreen() {
         disabled={working}
         placeholder={working ? 'Reading…' : 'Let me know how I can help…'}
       />
+      </KeyboardAvoidingView>
       <VoiceRecorder visible={recording} onCancel={() => setRecording(false)} onComplete={onVoiceDone} />
     </View>
   );
