@@ -43,6 +43,15 @@ build is a cable install signed with Micah's free personal team:
 - On the Mac mini: repo lives at `/Users/micahphenix/Playground`. Rebuild =
   `git pull && npx expo run:ios --configuration Release --device` (phone plugged in,
   unlocked, Developer Mode on).
+- **`expo run:ios` reuses a stale `ios/` folder if one exists** — it does NOT re-run
+  prebuild. After ANY app.json change (updates config, plugins, permissions), run
+  `npx expo prebuild --clean --platform ios` first, or the installed app silently
+  keeps the old native config. This is how the July 6 build shipped without the OTA
+  update URL and never received a single update.
+- OTA publishes from CI inline `EXPO_PUBLIC_*` keys from repo Actions secrets
+  (`EXPO_PUBLIC_ANTHROPIC_API_KEY`, `EXPO_PUBLIC_OPENAI_API_KEY`). If those secrets
+  are missing, published bundles carry empty keys and the coach goes offline on any
+  device that applies them. Local builds read the same vars from `.env`.
 - Free signing expires after **7 days** — the app shows "Steward Not Available" and
   needs the cable rebuild. OTA covers all JS changes in between, so this is the only
   reason to touch the cable.
