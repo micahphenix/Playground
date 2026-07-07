@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import * as Updates from 'expo-updates';
 import Svg, { Path } from 'react-native-svg';
 import { colors, fonts } from '../../theme';
 import { TopBar } from '../../components/TopBar';
@@ -162,11 +163,23 @@ export function ProfileScreen() {
             marginTop: 8,
           }}
         >
-          STEWARD · v0.1 · LOCAL ONLY
+          {`STEWARD · v0.1 · ${bundleLabel()}`}
         </Text>
       </ScrollView>
     </View>
   );
+}
+
+// Which JS bundle is actually running — the OTA debugging question of
+// July 7, 2026, answered permanently. BUILD = the bundle compiled into the
+// cable install; OTA <id> = an over-the-air update has applied.
+function bundleLabel(): string {
+  try {
+    if (Updates.isEmbeddedLaunch || !Updates.updateId) return 'BUILD BUNDLE';
+    return `OTA ${Updates.updateId.slice(0, 8).toUpperCase()}`;
+  } catch {
+    return 'DEV';
+  }
 }
 
 function Group({ g }: { g: Group }) {
