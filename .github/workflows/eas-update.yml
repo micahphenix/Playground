@@ -31,5 +31,19 @@ jobs:
           npx tsc --noEmit
           npx jest --ci
 
+      # EXPO_PUBLIC_* vars are inlined into the JS bundle when `eas update`
+      # exports it. Without them the published bundle ships a dead coach
+      # ("Coach offline" on every AI feature) — so refuse to publish keyless.
       - name: Publish OTA update
-        run: eas update --channel production --auto --non-interactive
+        env:
+          EXPO_PUBLIC_ANTHROPIC_API_KEY: ${{ secrets.EXPO_PUBLIC_ANTHROPIC_API_KEY }}
+          EXPO_PUBLIC_OPENAI_API_KEY: ${{ secrets.EXPO_PUBLIC_OPENAI_API_KEY }}
+        run: |
+          if [ -z "$EXPO_PUBLIC_ANTHROPIC_API_KEY" ]; then
+            echo "::error::EXPO_PUBLIC_ANTHROPIC_API_KEY repo secret is not set. Publishing without it ships a bundle where the coach is offline. Add it under Settings -> Secrets and variables -> Actions, then re-run."
+            exit 1
+          fi
+          if [ -z "$EXPO_PUBLIC_OPENAI_API_KEY" ]; then
+            echo "::warning::EXPO_PUBLIC_OPENAI_API_KEY repo secret is not set - voice transcription will be disabled in this update."
+          fi
+          eas update --channel production --auto --non-interactive
