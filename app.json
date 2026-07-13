@@ -55,6 +55,8 @@
           "photosPermission": "Steward reads meal photos from your library to log them."
         }
       ],
+      "./plugins/withoutPushEntitlement",
+      "./plugins/withFmtClangWorkaround",
       "expo-notifications",
       "expo-font",
       "expo-asset"
