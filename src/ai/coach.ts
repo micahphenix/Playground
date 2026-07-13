@@ -3,6 +3,7 @@ import type { LogEntry, MealItem, PatternFlag, Profile } from '../data/types';
 import { buildSystemPrompt } from './systemPrompt';
 import { weekSummaryBlock } from '../data/weekSummary';
 import { parseJsonish } from './json';
+import { detectImageMediaType } from './imageType';
 
 // Single point of contact with Anthropic. Screens never import the SDK directly.
 //
@@ -85,7 +86,7 @@ estimate portion + macros. Output ONLY valid JSON matching this shape, nothing e
 
 Be honest about uncertainty in the description. If something is occluded, say so.`;
 
-export async function analyzeMealPhoto(base64Jpeg: string, ctx: CoachContext): Promise<PhotoAnalysis> {
+export async function analyzeMealPhoto(base64: string, ctx: CoachContext): Promise<PhotoAnalysis> {
   const res = await getClient().messages.create({
     model: FAST_MODEL,
     thinking: NO_THINKING,
@@ -97,7 +98,7 @@ export async function analyzeMealPhoto(base64Jpeg: string, ctx: CoachContext): P
         content: [
           {
             type: 'image',
-            source: { type: 'base64', media_type: 'image/jpeg', data: base64Jpeg },
+            source: { type: 'base64', media_type: detectImageMediaType(base64), data: base64 },
           },
           { type: 'text', text: 'Read this meal.' },
         ],
