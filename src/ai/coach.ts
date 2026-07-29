@@ -262,7 +262,6 @@ export async function interpret(
 export interface BriefingDraft {
   headline: string; // may include {{em:...}} for inline italic accent
   body: string;
-  actions: { label: string; kind: 'primary' | 'alt' | 'ghost' }[];
 }
 
 const BRIEFING_PROMPT = `Write the user's morning briefing.
@@ -270,11 +269,15 @@ const BRIEFING_PROMPT = `Write the user's morning briefing.
 Output ONLY valid JSON:
 {
   "headline": "one short sentence; wrap one short clause in {{em:like this}} for italic accent",
-  "body": "one or two sentences. Interpret, don't just quote numbers.",
-  "actions": [{"label":"...","kind":"primary"|"alt"|"ghost"}]  // 1-3 suggested next moves
+  "body": "one or two sentences. Interpret, don't just quote numbers."
 }
 
-Stewardship tone. Honest about uncertainty. Never shame.`;
+Stewardship tone. Honest about uncertainty. Never shame.
+
+The briefing is the opening of a conversation, not a form — the user replies in
+their own words. So end the body on something worth responding to: an observation
+that invites a reaction, or an open question. Never offer a menu of choices, and
+never write anything that reads like a button label.`;
 
 export async function generateBriefing(ctx: CoachContext): Promise<BriefingDraft> {
   const res = await getClient().messages.create({
