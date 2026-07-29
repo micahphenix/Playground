@@ -19,17 +19,18 @@ import { VoiceRecorder } from '../../components/VoiceRecorder';
 import { useData } from '../../data/DataContext';
 import { sumDayTotals } from '../../data/totals';
 import { trackingPlanFor } from '../../data/trackingPlans';
-import { analyzeMealPhoto, generateBriefing, parseFreeform, hasApiKey } from '../../ai/coach';
+import { analyzeMealPhoto, generateBriefing, interpret, hasApiKey } from '../../ai/coach';
+import { toHistory } from '../../ai/chatHistory';
 import { hasTranscriptionKey, transcribe } from '../../ai/transcribe';
 import { pickMealPhoto } from '../../services/photoPicker';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
-import type { LogEntry } from '../../data/types';
+import type { LogEntry, Message } from '../../data/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function TodayScreen() {
   const nav = useNavigation<Nav>();
-  const { profile, log, briefing, dismissBriefing, restoreBriefing, setBriefing, patterns, deleteLog, addMemory } = useData();
+  const { profile, log, briefing, dismissBriefing, restoreBriefing, setBriefing, patterns, deleteLog, addMemory, chatMessages, addChatMessage } = useData();
   const [composerText, setComposerText] = useState('');
   const [working, setWorking] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -87,38 +88,56 @@ export function TodayScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, briefing]);
 
-  async function sendText() {
-    if (!composerText.trim() || !profile) return;
+  // Today's composer and Chat feed the same conversation, so they run the same
+  // call. `interpret()` returns a reply AND any loggable entries; `parseFreeform`
+  // only ever returned entries, which is why asking a question here used to
+  // dead-end in a confirm modal with "I'd save 0 things" instead of an answer.
+  async function runInterpret(said: string, durationSec: number) {
+    if (!profile) return;
     if (!hasApiKey()) {
-      Alert.alert('Coach offline', 'Set EXPO_PUBLIC_ANTHROPIC_API_KEY in .env and restart Expo to enable parsing.');
+      Alert.alert('Coach offline', 'Set EXPO_PUBLIC_ANTHROPIC_API_KEY in .env and restart Expo to enable the coach.');
       return;
     }
+    // History is the transcript BEFORE this turn — the new text goes in live.
+    const history = toHistory(chatMessages);
     setWorking(true);
     try {
-      const parse = await parseFreeform(composerText, {
-        profile,
-        recentLog: log,
-        openPatterns: patterns.filter(p => p.status === 'open'),
-      });
-      const proposals = parse.entries
-        .filter(e => e.proposedLimitation)
-        .map(e => ({
-          kind: 'limitation' as const,
-          label: e.proposedLimitation!.label,
-          note: e.proposedLimitation!.note,
-        }));
-      // Voice + text share the confirm modal — pass the parsed entries through.
-      nav.navigate('VoiceConfirm', { transcript: composerText, durationSec: 0, entries: parse.entries });
-      if (proposals.length) {
-        // Stack the profile-update modal after the confirm modal closes.
-        // The confirm screen handles its own next-nav.
-      }
+      const userMsg: Message = { id: uuid(), role: 'user', text: said, createdAt: new Date().toISOString() };
+      await addChatMessage(userMsg).catch(() => {});
+      const result = await interpret(
+        said,
+        {
+          profile,
+          recentLog: log,
+          openPatterns: patterns.filter(p => p.status === 'open'),
+        },
+        history,
+      );
+      const coachMsg: Message = {
+        id: uuid(),
+        role: 'coach',
+        text: result.reply,
+        createdAt: new Date().toISOString(),
+      };
+      await addChatMessage(coachMsg).catch(() => {});
       setComposerText('');
+      if (result.entries.length > 0) {
+        // Something concrete to log — confirm before it lands in the day.
+        nav.navigate('VoiceConfirm', { transcript: said, durationSec, entries: result.entries });
+      } else {
+        // Pure conversation — open the thread so the answer is actually read.
+        nav.navigate('Chat');
+      }
     } catch (e: unknown) {
       Alert.alert("Coach couldn't read that", e instanceof Error ? e.message : 'Try again.');
     } finally {
       setWorking(false);
     }
+  }
+
+  async function sendText() {
+    if (!composerText.trim()) return;
+    await runInterpret(composerText.trim(), 0);
   }
 
   async function takePhoto() {
@@ -139,26 +158,23 @@ export function TodayScreen() {
   async function onVoiceDone(uri: string, durationSec: number) {
     setRecording(false);
     if (!profile) return;
-    if (!hasApiKey()) {
-      Alert.alert('Coach offline', 'Set EXPO_PUBLIC_ANTHROPIC_API_KEY in .env to parse what you said.');
-      return;
-    }
+    let said = '';
     setWorking(true);
     try {
-      const { text: said } = await transcribe(uri, durationSec);
-      if (!said) return;
-      const parse = await parseFreeform(said, {
-        profile,
-        recentLog: log,
-        openPatterns: patterns.filter(p => p.status === 'open'),
-      });
-      // Voice + text share the confirm modal — same path as sendText.
-      nav.navigate('VoiceConfirm', { transcript: said, durationSec, entries: parse.entries });
+      const res = await transcribe(uri, durationSec);
+      said = res.text;
     } catch (e: unknown) {
       Alert.alert("Couldn't transcribe", e instanceof Error ? e.message : 'Try again.');
+      return;
     } finally {
       setWorking(false);
     }
+    if (!said) {
+      Alert.alert("Didn't catch that", 'The recording came through empty — try again, a little closer to the mic.');
+      return;
+    }
+    // Voice is just another way to talk — same interpret path as typing.
+    await runInterpret(said, durationSec);
   }
   async function runPhotoAnalysis(uri: string) {
     if (!profile) return;

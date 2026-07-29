@@ -21,7 +21,8 @@ import { Card } from '../../components/Card';
 import { PhotoStripe } from '../../components/PhotoStripe';
 import { VoiceRecorder } from '../../components/VoiceRecorder';
 import { useData } from '../../data/DataContext';
-import { analyzeMealPhoto, interpret, hasApiKey, type ChatMessageIn } from '../../ai/coach';
+import { analyzeMealPhoto, interpret, hasApiKey } from '../../ai/coach';
+import { toHistory } from '../../ai/chatHistory';
 import { hasTranscriptionKey, transcribe } from '../../ai/transcribe';
 import { pickMealPhoto } from '../../services/photoPicker';
 import type { Message, PatternFlag } from '../../data/types';
@@ -320,12 +321,6 @@ function Dot({ delay }: { delay: number }) {
 // Project screen messages into API turns. Pattern cards and photo-only
 // bubbles carry no text the model can use; system messages aren't part of the
 // user/assistant alternation.
-function toHistory(msgs: Message[]): ChatMessageIn[] {
-  return msgs
-    .filter(m => m.text && !m.patternFlagId && (m.role === 'user' || m.role === 'coach'))
-    .map(m => ({ role: m.role === 'user' ? ('user' as const) : ('assistant' as const), content: m.text! }));
-}
-
 function seedMessages(): Message[] {
   return [
     {
