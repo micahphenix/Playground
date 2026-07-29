@@ -10,7 +10,6 @@ import { colors, fonts, radii, type } from '../../theme';
 import { TopBar } from '../../components/TopBar';
 import { Card } from '../../components/Card';
 import { Label } from '../../components/Label';
-import { PillButton } from '../../components/PillButton';
 import { CoachMark } from '../../components/CoachMark';
 import { ConcentricRings } from '../../components/Ring';
 import { Composer } from '../../components/Composer';
@@ -21,12 +20,22 @@ import { sumDayTotals } from '../../data/totals';
 import { trackingPlanFor } from '../../data/trackingPlans';
 import { analyzeMealPhoto, generateBriefing, interpret, hasApiKey } from '../../ai/coach';
 import { toHistory } from '../../ai/chatHistory';
+import { briefingSeed } from '../../ai/briefingThread';
 import { hasTranscriptionKey, transcribe } from '../../ai/transcribe';
 import { pickMealPhoto } from '../../services/photoPicker';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import type { LogEntry, Message } from '../../data/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+interface InterpretOpts {
+  // Coach turn written to the transcript ahead of the user's, so replying to
+  // the briefing opens a thread that already carries what the briefing said.
+  seedCoachTurn?: string;
+  // Record the user's message as the day's decision in memory. Replaces the
+  // canned "Picked <label>" row the action pills used to write.
+  recordDecision?: boolean;
+}
 
 export function TodayScreen() {
   const nav = useNavigation<Nav>();
@@ -57,9 +66,10 @@ export function TodayScreen() {
         timestamp: now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }).toLowerCase(),
         headline: draft.headline,
         body: draft.body,
-        actions: draft.actions,
         dismissed: false,
       });
+      // A regenerated briefing is a new opening turn — allow it to seed again.
+      seededBriefing.current = null;
     } catch (e: unknown) {
       Alert.alert("Couldn't write the briefing", e instanceof Error ? e.message : 'Try again.');
     } finally {
@@ -70,6 +80,9 @@ export function TodayScreen() {
   const todays = useMemo(() => sumToday(log), [log]);
   const dateLabel = useMemo(() => formatDateTitle(new Date()), []);
   const autoRegenRan = useRef(false);
+  // Which briefing has already been seeded into the chat transcript, so a
+  // second message on the same day doesn't repeat it.
+  const seededBriefing = useRef<string | null>(null);
 
   // Foreground EOD substitute: if the briefing is from a previous day, write
   // a new one on first open today. A real background task (expo-background-task)
@@ -92,7 +105,7 @@ export function TodayScreen() {
   // call. `interpret()` returns a reply AND any loggable entries; `parseFreeform`
   // only ever returned entries, which is why asking a question here used to
   // dead-end in a confirm modal with "I'd save 0 things" instead of an answer.
-  async function runInterpret(said: string, durationSec: number) {
+  async function runInterpret(said: string, durationSec: number, opts: InterpretOpts = {}) {
     if (!profile) return;
     if (!hasApiKey()) {
       Alert.alert('Coach offline', 'Set EXPO_PUBLIC_ANTHROPIC_API_KEY in .env and restart Expo to enable the coach.');
@@ -102,6 +115,18 @@ export function TodayScreen() {
     const history = toHistory(chatMessages);
     setWorking(true);
     try {
+      // Seed the coach's own words as the opening turn so the thread reads as a
+      // continuation of the card the user was just looking at, not a cold start.
+      if (opts.seedCoachTurn) {
+        const seedMsg: Message = {
+          id: uuid(),
+          role: 'coach',
+          text: opts.seedCoachTurn,
+          createdAt: new Date().toISOString(),
+        };
+        await addChatMessage(seedMsg).catch(() => {});
+        history.push({ role: 'assistant', content: opts.seedCoachTurn });
+      }
       const userMsg: Message = { id: uuid(), role: 'user', text: said, createdAt: new Date().toISOString() };
       await addChatMessage(userMsg).catch(() => {});
       const result = await interpret(
@@ -120,6 +145,15 @@ export function TodayScreen() {
         createdAt: new Date().toISOString(),
       };
       await addChatMessage(coachMsg).catch(() => {});
+      if (opts.recordDecision) {
+        await addMemory({
+          id: uuid(),
+          kind: 'decision',
+          headline: "Responded to today's briefing",
+          detail: said,
+          createdAt: new Date().toISOString(),
+        });
+      }
       setComposerText('');
       if (result.entries.length > 0) {
         // Something concrete to log — confirm before it lands in the day.
@@ -135,9 +169,21 @@ export function TodayScreen() {
     }
   }
 
+  // While an undismissed briefing is on screen, the user's next message IS the
+  // reply to it. Seed the coach's own words as the opening turn — once per
+  // briefing — so the thread carries that context instead of starting cold,
+  // and record what they actually said as the day's decision.
+  function briefingOpts(): InterpretOpts {
+    if (!briefing || briefing.dismissed) return {};
+    const key = `${briefing.forDate}:${briefing.timestamp}`;
+    if (seededBriefing.current === key) return {};
+    seededBriefing.current = key;
+    return { seedCoachTurn: briefingSeed(briefing.headline, briefing.body), recordDecision: true };
+  }
+
   async function sendText() {
     if (!composerText.trim()) return;
-    await runInterpret(composerText.trim(), 0);
+    await runInterpret(composerText.trim(), 0, briefingOpts());
   }
 
   async function takePhoto() {
@@ -174,7 +220,7 @@ export function TodayScreen() {
       return;
     }
     // Voice is just another way to talk — same interpret path as typing.
-    await runInterpret(said, durationSec);
+    await runInterpret(said, durationSec, briefingOpts());
   }
   async function runPhotoAnalysis(uri: string) {
     if (!profile) return;
@@ -217,20 +263,9 @@ export function TodayScreen() {
             headline={briefing.headline}
             body={briefing.body}
             timestamp={briefing.timestamp}
-            actions={briefing.actions}
             onDismiss={dismissBriefing}
             onRegenerate={regenerate}
             regenerating={regenerating}
-            onAction={async (label) => {
-              await addMemory({
-                id: uuid(),
-                kind: 'decision',
-                headline: `Picked "${label}"`,
-                detail: `Today's briefing: ${briefing.headline.replace(/\{\{em:|\}\}/g, '')}`,
-                createdAt: new Date().toISOString(),
-              });
-              await dismissBriefing();
-            }}
           />
         ) : (
           <>
@@ -382,24 +417,25 @@ function summarize(meals: number, workouts: number, recovery: number): string {
   return parts.join(' · ') + '.';
 }
 
+// Read-only by design. Suggested-action pills used to live at the bottom of
+// this card; tapping one wrote a canned "Picked <label>" decision and closed
+// the briefing, which made the one moment with real context feel like a form.
+// The briefing is now something you reply to in your own words — the composer
+// below carries it into the conversation.
 function BriefingCard({
   headline,
   body,
   timestamp,
-  actions,
   onDismiss,
   onRegenerate,
   regenerating,
-  onAction,
 }: {
   headline: string;
   body: string;
   timestamp: string;
-  actions: { label: string; kind: 'primary' | 'alt' | 'ghost' }[];
   onDismiss: () => void;
   onRegenerate: () => void;
   regenerating: boolean;
-  onAction: (label: string) => void;
 }) {
   return (
     <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
@@ -446,11 +482,6 @@ function BriefingCard({
         >
           {body}
         </Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
-          {actions.map((a, i) => (
-            <PillButton key={i} label={a.label} kind={a.kind} onPress={() => onAction(a.label)} />
-          ))}
-        </View>
       </Card>
     </View>
   );

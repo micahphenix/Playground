@@ -127,6 +127,9 @@ export interface Briefing {
   timestamp: string; // "7:42 am"
   headline: string; // serif lead, may contain an italic accent clause via {{em:...}}
   body: string;
-  actions: { label: string; kind: 'primary' | 'alt' | 'ghost' }[];
+  // Suggested-action pills, removed July 29 — the briefing is replied to in the
+  // user's own words now. Optional so briefings already persisted on device
+  // still deserialize; nothing reads it.
+  actions?: { label: string; kind: 'primary' | 'alt' | 'ghost' }[];
   dismissed: boolean;
 }
