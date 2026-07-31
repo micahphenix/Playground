@@ -38,6 +38,7 @@ export function MemoryScreen() {
       const draft = await generateRecap({
         profile,
         recentLog: log,
+        memory,
         openPatterns: patterns.filter(p => p.status === 'open'),
       });
       const now = new Date().toISOString();
@@ -76,6 +77,7 @@ export function MemoryScreen() {
       const candidates = await detectPatterns({
         profile,
         recentLog: log,
+        memory,
         openPatterns: patterns.filter(p => p.status === 'open'),
       });
       if (!candidates.length) {
