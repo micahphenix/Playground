@@ -43,8 +43,13 @@ export interface Limitation {
   expiresAt: string | null;
 }
 
-// One confirmed entry in the daily log — meal, workout, or recovery.
-export type LogKind = 'meal' | 'workout' | 'recovery' | 'note';
+// One confirmed entry in the daily log — meal, workout, recovery or weigh-in.
+//
+// 'weigh-in' covers both the morning scale number and a full composition scan
+// (InBody, DEXA). They're the same data type at different resolutions — a scan
+// is a weigh-in that also knows its fat/lean split — so they share one kind and
+// one entry path rather than getting bespoke screens. Config is data.
+export type LogKind = 'meal' | 'workout' | 'recovery' | 'note' | 'weigh-in';
 
 export interface LogEntry {
   id: string;
@@ -58,6 +63,10 @@ export interface LogEntry {
   workout?: { type: string; durationMin: number; rpe?: number };
   // For recovery
   recovery?: { sleepHrs?: number; soreness?: string; mood?: string };
+  // For weigh-ins and body scans. Numbers, not prose — the body model trends
+  // these, and a display string like "Weight 190 lb · 18.5% BF" can't be
+  // trended. `scan` is absent for a plain morning weigh-in.
+  body?: { weightLb?: number; bodyFatPct?: number; leanLb?: number; scan?: 'inbody' | 'dexa' };
   // Provenance
   source: 'photo' | 'voice' | 'text' | 'quick';
   rawInput?: string;

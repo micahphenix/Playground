@@ -48,7 +48,40 @@ export function QuickEntryModal() {
         createdAt: now,
       };
       await addLog(entry);
+    } else if (kind === 'weight') {
+      // The daily habit: one number, one tap. This is what feeds the rolling
+      // maintenance calculation, so it has to be faster than opening a scan.
+      const lb = Number(weight);
+      const entry: LogEntry = {
+        id: uuid(),
+        kind: 'weigh-in',
+        title: `${lb} lb`,
+        body: { weightLb: lb },
+        source: 'quick',
+        createdAt: now,
+      };
+      await addLog(entry);
     } else {
+      // A scan is a weigh-in that also knows its composition — same kind, same
+      // path. Stored as NUMBERS: the body model trends these, and the display
+      // string this used to write could never be trended.
+      const entry: LogEntry = {
+        id: uuid(),
+        kind: 'weigh-in',
+        title: `InBody scan · ${scanDate}`,
+        detail: `Weight ${weight || '—'} lb · ${bodyFat || '—'}% BF · ${muscle || '—'} lb SMM`,
+        body: {
+          weightLb: weight ? Number(weight) : undefined,
+          bodyFatPct: bodyFat ? Number(bodyFat) : undefined,
+          leanLb: muscle ? Number(muscle) : undefined,
+          scan: 'inbody',
+        },
+        source: 'quick',
+        createdAt: scanDateToIso(scanDate, now),
+      };
+      await addLog(entry);
+      // Keep the human-readable row in Memory too — scans are exactly the kind
+      // of milestone the Memory tab is for, and Micah already looks for them there.
       const item: MemoryItem = {
         id: uuid(),
         kind: 'fact',
@@ -65,12 +98,32 @@ export function QuickEntryModal() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ModalHeader
-        title={kind === 'recovery' ? 'Recovery check-in' : 'InBody scan'}
-        sub={kind === 'recovery' ? 'pre-Garmin · manual' : 'composition entry'}
+        title={kind === 'recovery' ? 'Recovery check-in' : kind === 'weight' ? 'Morning weigh-in' : 'InBody scan'}
+        sub={
+          kind === 'recovery'
+            ? 'pre-Garmin · manual'
+            : kind === 'weight'
+              ? 'one number · same time daily'
+              : 'composition entry'
+        }
         onClose={nav.goBack}
       />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12 }} keyboardShouldPersistTaps="handled">
-        {kind === 'recovery' ? (
+        {kind === 'weight' ? (
+          <View style={{ gap: 12 }}>
+            <Card style={{ padding: 14 }}>
+              <Label>Weight this morning</Label>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 8, gap: 6 }}>
+                <NumericField value={weight} onChange={setWeight} placeholder="190" />
+                <Text style={{ fontFamily: fonts.mono, color: colors.muted, fontSize: 13 }}>lb</Text>
+              </View>
+            </Card>
+            <Text style={{ fontFamily: fonts.serifRegItalic, fontSize: 13, color: colors.muted, padding: 4 }}>
+              Same time, same conditions — first thing, after the bathroom, before food. Day-to-day
+              water swings don't matter; the coach reads the weekly average, not any single morning.
+            </Text>
+          </View>
+        ) : kind === 'recovery' ? (
           <View style={{ gap: 12 }}>
             <Card style={{ padding: 14 }}>
               <Label>Sleep last night</Label>
@@ -146,10 +199,23 @@ export function QuickEntryModal() {
         onPrimary={save}
         onSecondary={() => nav.goBack()}
         primaryLoading={saving}
-        primaryDisabled={kind === 'recovery' ? !sleep && !soreness && !mood : !weight && !bodyFat && !muscle}
+        primaryDisabled={
+          kind === 'recovery'
+            ? !sleep && !soreness && !mood
+            : kind === 'weight'
+              ? !Number(weight)
+              : !weight && !bodyFat && !muscle
+        }
       />
     </View>
   );
+}
+
+// A scan can be backdated through the date field. Date the entry to the scan
+// itself, not to when it was typed in, or the model anchors it on the wrong
+// day. Noon UTC keeps the date stable when it's sliced back out.
+function scanDateToIso(scanDate: string, fallbackIso: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(scanDate) ? `${scanDate}T12:00:00.000Z` : fallbackIso;
 }
 
 function NumericField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
