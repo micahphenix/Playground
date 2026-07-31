@@ -23,6 +23,8 @@
 // · Cold start: before the window fills, fall back to the static estimate and
 //   say so, with how many more days are needed.
 
+import type { LogEntry, MemoryItem } from './types';
+
 export const KCAL_PER_LB = 3500;
 export const WINDOW_DAYS = 14;
 const HALF = WINDOW_DAYS / 2;
@@ -231,6 +233,75 @@ export function leanMassLb(scan: BodyScan): number {
 // plotted curve through the gap would read as knowledge the app doesn't have.
 // The scale genuinely cannot tell fat from muscle — that's the whole reason
 // scans anchor the model. So: measured deltas at the anchors, silence between.
+// --- adapters: the log is the model's input -------------------------------
+//
+// Days are scoped by the UTC slice of `createdAt`, matching sumDayTotals, so
+// the weight series and the intake series agree on what "a day" means.
+
+// Every logged weight, whether a plain morning weigh-in or a full scan.
+export function weighInsFromLog(log: LogEntry[]): WeighIn[] {
+  const out: WeighIn[] = [];
+  for (const e of log) {
+    const lb = e.body?.weightLb;
+    if (e.kind !== 'weigh-in' || typeof lb !== 'number') continue;
+    out.push({ date: e.createdAt.slice(0, 10), lb });
+  }
+  return out;
+}
+
+// Only days with real logged intake. A day with no meals is absent from this
+// list, never present as a zero — see deriveMaintenance.
+export function intakeDaysFromLog(log: LogEntry[]): IntakeDay[] {
+  const out: IntakeDay[] = [];
+  for (const e of log) {
+    if (!e.macros || e.macros.kcal <= 0) continue;
+    out.push({ date: e.createdAt.slice(0, 10), kcal: e.macros.kcal });
+  }
+  return out;
+}
+
+// Composition scans need BOTH weight and body-fat to anchor anything.
+export function scansFromLog(log: LogEntry[]): BodyScan[] {
+  const out: BodyScan[] = [];
+  for (const e of log) {
+    const b = e.body;
+    if (e.kind !== 'weigh-in' || !b) continue;
+    if (typeof b.weightLb !== 'number' || typeof b.bodyFatPct !== 'number') continue;
+    out.push({ date: e.createdAt.slice(0, 10), weightLb: b.weightLb, bodyFatPct: b.bodyFatPct });
+  }
+  return out;
+}
+
+// Scans recorded before this schema existed live as memory facts holding a
+// display string: headline "InBody · 2026-06-14", detail "Weight 190 lb ·
+// 18.5% BF · 172 lb SMM". Rather than rewrite stored data, we read it — the
+// old entries still anchor the model, and nothing on the phone is touched.
+const LEGACY_HEADLINE = /^(InBody|DEXA)\s*·\s*(\d{4}-\d{2}-\d{2})/i;
+
+export function scansFromLegacyMemory(memory: MemoryItem[]): BodyScan[] {
+  const out: BodyScan[] = [];
+  for (const m of memory) {
+    if (m.kind !== 'fact' || !m.detail) continue;
+    const head = LEGACY_HEADLINE.exec(m.headline);
+    if (!head) continue;
+    const weight = /Weight\s+([\d.]+)\s*lb/i.exec(m.detail);
+    const bf = /([\d.]+)\s*%\s*BF/i.exec(m.detail);
+    if (!weight || !bf) continue; // "—" placeholders land here and are skipped
+    out.push({ date: head[2], weightLb: Number(weight[1]), bodyFatPct: Number(bf[1]) });
+  }
+  return out;
+}
+
+// Structured entries win over legacy prose for the same date, so a re-entered
+// scan supersedes its old string rather than double-counting.
+export function allScans(log: LogEntry[], memory: MemoryItem[]): BodyScan[] {
+  const structured = scansFromLog(log);
+  const seen = new Set(structured.map(s => s.date));
+  return [...structured, ...scansFromLegacyMemory(memory).filter(s => !seen.has(s.date))].sort((a, b) =>
+    a.date.localeCompare(b.date),
+  );
+}
+
 export function compositionDeltas(scans: BodyScan[]): CompositionDelta[] {
   const sorted = [...scans].sort((a, b) => a.date.localeCompare(b.date));
   const out: CompositionDelta[] = [];

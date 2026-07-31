@@ -104,6 +104,12 @@ export function ProfileScreen() {
       title: 'Quick entry',
       rows: [
         {
+          title: 'Morning weigh-in',
+          detail: 'One number — feeds the maintenance calculation',
+          kind: 'chev',
+          onPress: () => nav.navigate('QuickEntry', { kind: 'weight' }),
+        },
+        {
           title: 'Recovery check-in',
           detail: 'Sleep, soreness, mood — manual',
           kind: 'chev',

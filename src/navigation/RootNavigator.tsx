@@ -26,7 +26,7 @@ export type RootStackParamList = {
   PatternDetail: { pattern: PatternFlag };
   WeeklyRecap: { recap: WeeklyRecap };
   GoalSwitcher: undefined;
-  QuickEntry: { kind: 'recovery' | 'inbody' };
+  QuickEntry: { kind: 'recovery' | 'inbody' | 'weight' };
   WatchPreview: undefined;
 };
 
