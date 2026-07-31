@@ -32,7 +32,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function ChatScreen() {
   const nav = useNavigation<Nav>();
-  const { profile, log, patterns, chatMessages, addChatMessage } = useData();
+  const { profile, log, patterns, memory, chatMessages, addChatMessage } = useData();
   // Resume the persisted transcript; the greeting only seeds a fresh install.
   const [messages, setMessages] = useState<Message[]>(() =>
     chatMessages.length ? chatMessages : seedMessages(),
@@ -57,9 +57,10 @@ export function ChatScreen() {
     () => ({
       profile: profile!,
       recentLog: log,
+      memory,
       openPatterns: patterns.filter(p => p.status === 'open'),
     }),
-    [profile, log, patterns],
+    [profile, log, patterns, memory],
   );
 
   const send = useCallback(async () => {

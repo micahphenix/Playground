@@ -39,7 +39,7 @@ interface InterpretOpts {
 
 export function TodayScreen() {
   const nav = useNavigation<Nav>();
-  const { profile, log, briefing, dismissBriefing, restoreBriefing, setBriefing, patterns, deleteLog, addMemory, chatMessages, addChatMessage } = useData();
+  const { profile, log, briefing, dismissBriefing, restoreBriefing, setBriefing, patterns, deleteLog, addMemory, memory, chatMessages, addChatMessage } = useData();
   const [composerText, setComposerText] = useState('');
   const [working, setWorking] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -57,6 +57,7 @@ export function TodayScreen() {
       const draft = await generateBriefing({
         profile,
         recentLog: log,
+        memory,
         openPatterns: patterns.filter(p => p.status === 'open'),
       });
       const now = new Date();
@@ -134,6 +135,7 @@ export function TodayScreen() {
         {
           profile,
           recentLog: log,
+          memory,
           openPatterns: patterns.filter(p => p.status === 'open'),
         },
         history,
@@ -234,6 +236,7 @@ export function TodayScreen() {
       const analysis = await analyzeMealPhoto(base64, {
         profile,
         recentLog: log,
+        memory,
         openPatterns: patterns.filter(p => p.status === 'open'),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

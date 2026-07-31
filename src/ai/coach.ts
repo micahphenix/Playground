@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { LogEntry, MealItem, PatternFlag, Profile } from '../data/types';
+import type { LogEntry, MealItem, MemoryItem, PatternFlag, Profile } from '../data/types';
 import { buildSystemPrompt } from './systemPrompt';
 import { weekSummaryBlock } from '../data/weekSummary';
 import { parseJsonish } from './json';
@@ -38,6 +38,9 @@ interface CoachContext {
   profile: Profile;
   recentLog: LogEntry[];
   openPatterns: PatternFlag[];
+  // Optional — supplies body scans recorded before the structured schema
+  // existed, so they still anchor the body model.
+  memory?: MemoryItem[];
 }
 
 export interface ChatMessageIn {
