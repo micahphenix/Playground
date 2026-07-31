@@ -24,6 +24,7 @@
 //   say so, with how many more days are needed.
 
 import type { LogEntry, MemoryItem } from './types';
+import { localDay } from './day';
 
 export const KCAL_PER_LB = 3500;
 export const WINDOW_DAYS = 14;
@@ -244,7 +245,7 @@ export function weighInsFromLog(log: LogEntry[]): WeighIn[] {
   for (const e of log) {
     const lb = e.body?.weightLb;
     if (e.kind !== 'weigh-in' || typeof lb !== 'number') continue;
-    out.push({ date: e.createdAt.slice(0, 10), lb });
+    out.push({ date: localDay(e.createdAt), lb });
   }
   return out;
 }
@@ -255,7 +256,7 @@ export function intakeDaysFromLog(log: LogEntry[]): IntakeDay[] {
   const out: IntakeDay[] = [];
   for (const e of log) {
     if (!e.macros || e.macros.kcal <= 0) continue;
-    out.push({ date: e.createdAt.slice(0, 10), kcal: e.macros.kcal });
+    out.push({ date: localDay(e.createdAt), kcal: e.macros.kcal });
   }
   return out;
 }
@@ -267,7 +268,7 @@ export function scansFromLog(log: LogEntry[]): BodyScan[] {
     const b = e.body;
     if (e.kind !== 'weigh-in' || !b) continue;
     if (typeof b.weightLb !== 'number' || typeof b.bodyFatPct !== 'number') continue;
-    out.push({ date: e.createdAt.slice(0, 10), weightLb: b.weightLb, bodyFatPct: b.bodyFatPct });
+    out.push({ date: localDay(e.createdAt), weightLb: b.weightLb, bodyFatPct: b.bodyFatPct });
   }
   return out;
 }

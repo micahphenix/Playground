@@ -1,4 +1,5 @@
 import type { LogEntry } from './types';
+import { localDay, shiftDay, todayLocal } from './day';
 
 // Computed grounding for the LLM's weekly recap and pattern scan. The system
 // prompt only carries the 12 most recent log entries — a normal week exceeds
@@ -20,14 +21,11 @@ export interface DaySummary {
 // Days with no entries are still emitted so gaps are visible to the model.
 export function summarizeWeek(
   log: LogEntry[],
-  endDay = new Date().toISOString().slice(0, 10),
+  endDay = todayLocal(),
 ): DaySummary[] {
   const days: DaySummary[] = [];
-  const end = new Date(endDay + 'T00:00:00Z');
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(end);
-    d.setUTCDate(d.getUTCDate() - i);
-    const isoDay = d.toISOString().slice(0, 10);
+    const isoDay = shiftDay(endDay, -i);
     const day: DaySummary = {
       isoDay,
       meals: 0,
@@ -38,7 +36,7 @@ export function summarizeWeek(
       sleepHrs: null,
     };
     for (const e of log) {
-      if (e.createdAt.slice(0, 10) !== isoDay) continue;
+      if (localDay(e.createdAt) !== isoDay) continue;
       if (e.kind === 'meal') {
         day.meals += 1;
         if (e.macros) {
@@ -61,7 +59,7 @@ export function summarizeWeek(
 // is data (a day the user didn't log), not something to smooth over.
 export function weekSummaryBlock(
   log: LogEntry[],
-  endDay = new Date().toISOString().slice(0, 10),
+  endDay = todayLocal(),
 ): string {
   const lines = summarizeWeek(log, endDay).map(d => {
     const parts: string[] = [];

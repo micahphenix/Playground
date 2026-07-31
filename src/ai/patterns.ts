@@ -1,4 +1,5 @@
 import type { LogEntry, PatternFlag } from '../data/types';
+import { localDay } from '../data/day';
 
 // Quick rule-based pattern detection. Runs on the client before / instead of
 // an LLM call so the coach can surface things immediately. The handoff calls
@@ -9,7 +10,7 @@ export function detectMissedProtein(log: LogEntry[], targetG: number): PatternFl
   const byDay = new Map<string, number>();
   log.forEach(e => {
     if (e.kind !== 'meal' || !e.macros) return;
-    const day = e.createdAt.slice(0, 10);
+    const day = localDay(e.createdAt);
     byDay.set(day, (byDay.get(day) ?? 0) + e.macros.protein_g);
   });
   const days = [...byDay.entries()].sort(([a], [b]) => (a < b ? 1 : -1)).slice(0, 7);

@@ -12,6 +12,18 @@ interface Props {
   onComplete: (uri: string, durationSec: number) => void;
 }
 
+// iOS holds the audio session in record mode until it's told otherwise, which
+// keeps the output route on the earpiece — every later sound in the app comes
+// out thin and quiet, and it persists until the app is killed. Recording sets
+// allowsRecordingIOS: true, so every exit path has to hand it back.
+async function releaseAudioSession() {
+  try {
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+  } catch {
+    // Best-effort teardown — never let this surface as a recording failure.
+  }
+}
+
 // Records a short voice memo. Renders a card overlay with mic + duration; tap
 // stop to finish. Tap cancel to discard.
 export function VoiceRecorder({ visible, onCancel, onComplete }: Props) {
@@ -55,6 +67,7 @@ export function VoiceRecorder({ visible, onCancel, onComplete }: Props) {
         r.stopAndUnloadAsync().catch(() => {});
         recRef.current = null;
       }
+      releaseAudioSession();
     };
   }, [visible]);
 
@@ -66,6 +79,7 @@ export function VoiceRecorder({ visible, onCancel, onComplete }: Props) {
       await r.stopAndUnloadAsync();
       const uri = r.getURI();
       recRef.current = null;
+      await releaseAudioSession();
       if (!uri) throw new Error('Recording produced no file.');
       onComplete(uri, duration);
     } catch (e: unknown) {
@@ -78,6 +92,7 @@ export function VoiceRecorder({ visible, onCancel, onComplete }: Props) {
     const r = recRef.current;
     if (r) r.stopAndUnloadAsync().catch(() => {});
     recRef.current = null;
+    releaseAudioSession();
     setPhase('idle');
     setDuration(0);
     onCancel();

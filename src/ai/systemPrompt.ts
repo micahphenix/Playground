@@ -5,6 +5,7 @@ import {
   mergedChecklist,
   mergedPatternsToWatch,
 } from '../data/trackingPlans';
+import { todayLocal } from '../data/day';
 import {
   allScans,
   compositionDeltas,
@@ -155,7 +156,7 @@ export function buildSystemPrompt({ profile, recentLog, openPatterns, memory = [
     'OPEN PATTERNS',
     patterns,
     '',
-    ...bodyModelBlock(recentLog, memory, today ?? new Date().toISOString().slice(0, 10), plan.rings.calories),
+    ...bodyModelBlock(recentLog, memory, today ?? todayLocal(), plan.rings.calories),
     '',
     'BEHAVIOR',
     '  Recommend the next wise step, given everything above.',

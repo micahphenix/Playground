@@ -24,7 +24,15 @@ import { briefingSeed } from '../../ai/briefingThread';
 import { hasTranscriptionKey, transcribe } from '../../ai/transcribe';
 import { pickMealPhoto } from '../../services/photoPicker';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
-import type { LogEntry, Message } from '../../data/types';
+import type { LogEntry, MemoryItem, Message } from '../../data/types';
+import { todayLocal } from '../../data/day';
+import {
+  deriveMaintenance,
+  intakeDaysFromLog,
+  readLossRate,
+  weeklyTrend,
+  weighInsFromLog,
+} from '../../data/bodyModel';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -63,7 +71,7 @@ export function TodayScreen() {
       const now = new Date();
       await setBriefing({
         id: briefing?.id ?? 'auto',
-        forDate: now.toISOString().slice(0, 10),
+        forDate: todayLocal(),
         timestamp: now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }).toLowerCase(),
         headline: draft.headline,
         body: draft.body,
@@ -93,7 +101,7 @@ export function TodayScreen() {
     if (autoRegenRan.current) return;
     if (!profile || !hasApiKey()) return;
     if (!briefing) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocal();
     if (briefing.forDate === today) return;
     autoRegenRan.current = true;
     regenerate();
@@ -314,6 +322,8 @@ export function TodayScreen() {
 
         <RingsRow protein={todays.protein} calories={todays.kcal} targetP={plan.rings.protein_g} targetC={plan.rings.calories} />
 
+        <BodyModelCard log={log} memory={memory} staticEstimateKcal={plan.rings.calories} />
+
         <View style={{ paddingTop: 14, paddingHorizontal: 16 }}>
           <Label style={{ marginBottom: 8, paddingLeft: 4 }}>Recent</Label>
           <Card raised style={{ overflow: 'hidden' }}>
@@ -485,6 +495,108 @@ function BriefingCard({
         >
           {body}
         </Text>
+      </Card>
+    </View>
+  );
+}
+
+// The body model, made visible. Until this existed the coach knew the user's
+// measured maintenance but the user themselves had no way to see it, which is
+// a strange thing for a number derived entirely from their own data.
+//
+// Deliberately quiet: no chart, no projection. A weekly-average weight, the
+// derived maintenance, and an honest label about whether it is measured yet.
+function BodyModelCard({
+  log,
+  memory,
+  staticEstimateKcal,
+}: {
+  log: LogEntry[];
+  memory: MemoryItem[];
+  staticEstimateKcal: number;
+}) {
+  const model = useMemo(() => {
+    const asOf = todayLocal();
+    const weighIns = weighInsFromLog(log);
+    return {
+      maintenance: deriveMaintenance(weighIns, intakeDaysFromLog(log), asOf, staticEstimateKcal),
+      trend: weeklyTrend(weighIns, asOf),
+    };
+  }, [log, staticEstimateKcal]);
+
+  // Nothing logged and nothing measured — don't take up space telling the user
+  // they haven't done anything.
+  if (model.maintenance.kind === 'estimate' && model.maintenance.reason === 'cold-start' && !model.trend) {
+    return (
+      <View style={{ paddingTop: 14, paddingHorizontal: 16 }}>
+        <Label style={{ marginBottom: 8, paddingLeft: 4 }}>Body model</Label>
+        <Card style={{ padding: 16 }}>
+          <Text style={{ fontFamily: fonts.serifRegItalic, fontSize: 14, color: colors.muted, lineHeight: 20 }}>
+            Weigh in each morning and I'll work out what your body actually burns — measured from your own
+            data, not a calculator's guess.
+          </Text>
+        </Card>
+      </View>
+    );
+  }
+
+  const m = model.maintenance;
+  const measured = m.kind === 'measured';
+  const verdict = model.trend ? readLossRate(model.trend.weeklyDeltaLb) : null;
+  const verdictLabel: Record<NonNullable<typeof verdict>, string> = {
+    gaining: 'gaining',
+    maintaining: 'holding steady',
+    'on-target': 'on target',
+    fast: 'a little fast',
+    'too-fast': 'too fast — eat more',
+  };
+  const verdictTone = verdict === 'too-fast' || verdict === 'fast' ? colors.warn : colors.accent;
+
+  return (
+    <View style={{ paddingTop: 14, paddingHorizontal: 16 }}>
+      <Label style={{ marginBottom: 8, paddingLeft: 4 }}>Body model</Label>
+      <Card style={{ padding: 16, gap: 12 }}>
+        <View>
+          <Text style={{ fontFamily: fonts.sansBold, fontSize: 11, color: colors.muted, letterSpacing: 1 }}>
+            {measured ? 'MAINTENANCE · MEASURED' : 'MAINTENANCE · ESTIMATE'}
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
+            <Text style={{ fontFamily: fonts.serifBold, fontSize: 28, color: colors.ink }}>
+              {m.kcal.toLocaleString()}
+            </Text>
+            <Text style={{ fontFamily: fonts.mono, fontSize: 12, color: colors.muted }}>kcal/day</Text>
+          </View>
+          <Text style={{ fontFamily: fonts.sans, fontSize: 12.5, color: colors.body, marginTop: 4, lineHeight: 18 }}>
+            {measured
+              ? `From ${m.intakeDayCount} logged days and ${m.weighInCount} weigh-ins${m.confidence === 'rough' ? ' — still thin, treat as directional' : ''}.`
+              : m.reason === 'cold-start'
+                ? "Starting estimate — I haven't measured yours yet."
+                : `Still an estimate — about ${m.daysUntilMeasurable} more day${m.daysUntilMeasurable === 1 ? '' : 's'} of logging to measure it.`}
+          </Text>
+        </View>
+        {model.trend && (
+          <View style={{ borderTopWidth: 0.5, borderTopColor: colors.line, paddingTop: 12 }}>
+            <Text style={{ fontFamily: fonts.sansBold, fontSize: 11, color: colors.muted, letterSpacing: 1 }}>
+              WEIGHT · 7-DAY AVERAGE
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+              <Text style={{ fontFamily: fonts.serifBold, fontSize: 22, color: colors.ink }}>
+                {model.trend.recentMeanLb.toFixed(1)}
+              </Text>
+              <Text style={{ fontFamily: fonts.mono, fontSize: 12, color: colors.muted }}>lb</Text>
+              <View style={{ flex: 1 }} />
+              <Text style={{ fontFamily: fonts.sansBold, fontSize: 12.5, color: verdictTone }}>
+                {model.trend.weeklyDeltaLb > 0 ? '+' : ''}
+                {model.trend.weeklyDeltaLb.toFixed(1)} lb/wk
+              </Text>
+            </View>
+            {verdict && (
+              <Text style={{ fontFamily: fonts.serifRegItalic, fontSize: 13, color: colors.muted, marginTop: 4 }}>
+                {verdictLabel[verdict]} · single mornings are water noise, this is the average
+              </Text>
+            )}
+          </View>
+        )}
       </Card>
     </View>
   );
