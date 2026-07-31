@@ -86,11 +86,6 @@ export function seedBriefing(): Briefing {
     headline: 'Sleep was rough — {{em:third night under six hours.}}',
     body:
       "Protein finished short again yesterday (162g of 185). Today's the upper lift — would a slower session or a 40-minute spin be wiser? Your call.",
-    actions: [
-      { label: 'Lift lighter', kind: 'primary' },
-      { label: 'Walk instead', kind: 'alt' },
-      { label: 'Keep plan', kind: 'ghost' },
-    ],
     dismissed: false,
   };
 }

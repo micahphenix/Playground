@@ -8,6 +8,7 @@ import { Label } from '../../components/Label';
 import { WatchFace, WatchShape } from '../../components/WatchFace';
 import { useData } from '../../data/DataContext';
 import { activeTrackingPlan } from '../../data/trackingPlans';
+import { localDay, todayLocal } from '../../data/day';
 
 // In-app preview of the Steward watch face. The same content renders for any
 // wrist — round (Apple Watch / round Garmin) or square (Garmin Vivoactive,
@@ -27,11 +28,11 @@ export function WatchPreviewModal() {
   const [bezel, setBezel] = useState<'dark' | 'sand'>('dark');
 
   const totals = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocal();
     let kcal = 0,
       protein = 0;
     for (const e of log) {
-      if (e.createdAt.slice(0, 10) !== today) continue;
+      if (localDay(e.createdAt) !== today) continue;
       if (e.macros) {
         kcal += e.macros.kcal;
         protein += e.macros.protein_g;
