@@ -59,8 +59,10 @@ export interface LogEntry {
   // For meals
   macros?: { kcal: number; protein_g: number; carb_g: number; fat_g: number };
   items?: MealItem[];
-  // For workouts
-  workout?: { type: string; durationMin: number; rpe?: number };
+  // For workouts. activeKcal is what a watch reported burning; it is NOT fed
+  // back into the maintenance calculation, since the weight trend already
+  // absorbed that expenditure. It exists for load and recovery reasoning.
+  workout?: { type: string; durationMin: number; rpe?: number; activeKcal?: number; avgHr?: number };
   // For recovery
   recovery?: { sleepHrs?: number; soreness?: string; mood?: string };
   // For weigh-ins and body scans. Numbers, not prose — the body model trends

@@ -33,6 +33,8 @@ export function VoiceConfirmModal() {
         macros: e.macros,
         workout: e.workout,
         recovery: e.recovery,
+        // Carries a photographed scale/InBody/DEXA readout into the body model.
+        body: e.body,
         source: params.durationSec > 0 ? 'voice' : 'text',
         rawInput: params.transcript,
         createdAt: now,
