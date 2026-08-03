@@ -89,6 +89,117 @@ estimate portion + macros. Output ONLY valid JSON matching this shape, nothing e
 
 Be honest about uncertainty in the description. If something is occluded, say so.`;
 
+// 2b) General photo ingestion.
+//
+// A photo is not necessarily food. Screenshots of a Garmin/Apple activity
+// summary, an InBody or DEXA readout, a nutrition label, a scale — all of it is
+// signal. The meal-only path used to read those correctly and then pour them
+// into a meal confirm sheet with zeroed macros, which threw the reading away.
+//
+// Photographing a screen is also, practically, the integration we have today:
+// WP17 (HealthKit) and WP21 (Garmin) are still deferred, but a photo of the
+// summary carries the same numbers into the same model.
+export type PhotoReading =
+  | { kind: 'meal'; analysis: PhotoAnalysis }
+  | { kind: 'entries'; reply: string; entries: ParsedEntry[] }
+  | { kind: 'unreadable'; reply: string };
+
+const READ_PHOTO_PROMPT = `Read this photo and decide what it actually is. Output ONLY valid JSON.
+
+It might be a meal. It might equally be a screenshot of a workout/activity summary
+(Garmin, Apple Fitness, Strava), a body-composition readout (InBody, DEXA), a
+nutrition label, or a scale. Read what is actually there — never force it into
+being food.
+
+Shape:
+{
+  "kind": "meal" | "entries" | "unreadable",
+
+  // kind="meal" ONLY — a photo of actual food:
+  "meal": {
+    "title": "...", "description": "one sentence, called out as estimates", "confidence": 0.0-1.0,
+    "items": [{ "name": "...", "qty": "...", "kcal": n, "protein_g": n, "carb_g": n, "fat_g": n }],
+    "total": { "kcal": n, "protein_g": n, "carb_g": n, "fat_g": n }
+  },
+
+  // kind="entries" — anything else loggable:
+  "reply": "2-4 sentences. Evaluate it against their plan and constraints, don't just describe it.",
+  "entries": [
+    {
+      "kind": "workout" | "recovery" | "note" | "weigh-in" | "meal",
+      "title": "e.g. 'Road cycling — base aerobic'",
+      "detail": "the numbers you read, verbatim where possible",
+      "workout": { "type": "...", "durationMin": n, "activeKcal": n, "avgHr": n, "rpe": n },
+      "recovery": { "sleepHrs": n, "soreness": "...", "mood": "..." },
+      "body": { "weightLb": n, "bodyFatPct": n, "leanLb": n, "scan": "inbody" | "dexa" },
+      "proposedLimitation": { "label": "...", "note": "..." }
+    }
+  ],
+
+  // kind="unreadable":
+  "reply": "say plainly what you couldn't make out"
+}
+
+For the reply on a workout, coach it — that is the point. Was this in line with the
+plan or not? Compare the load to what their week actually calls for. If they took on
+more than planned, say so and name the concrete follow-through: extra water, more
+protein, an earlier night, an easier day tomorrow. If an easy ride drifted to
+threshold, that is worth naming — it is the known failure mode. Never just narrate
+the numbers back at them.`;
+
+export async function readPhoto(base64: string, ctx: CoachContext): Promise<PhotoReading> {
+  const res = await getClient().messages.create({
+    model: FAST_MODEL,
+    thinking: NO_THINKING,
+    max_tokens: 1000,
+    system: buildSystemPrompt(ctx) + '\n\n' + READ_PHOTO_PROMPT,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: detectImageMediaType(base64), data: base64 } },
+          { type: 'text', text: 'Read this.' },
+        ],
+      },
+    ],
+  });
+  const text = res.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map(b => b.text)
+    .join('')
+    .trim();
+  return normalizePhotoReading(
+    parseJsonish<RawPhotoReading>(text),
+  );
+}
+
+export interface RawPhotoReading {
+  kind?: string;
+  meal?: PhotoAnalysis;
+  reply?: string;
+  entries?: ParsedEntry[];
+}
+
+// Split out from readPhoto so the routing decision is testable without a
+// network call. The model can disagree with itself — claim "meal" while
+// returning workout entries, or claim "entries" and return none — so trust the
+// PAYLOAD over the label. Getting this wrong is what put a cycling summary
+// into a meal sheet with zeroed macros.
+export function normalizePhotoReading(parsed: RawPhotoReading): PhotoReading {
+  const entries = (parsed.entries ?? []).filter(e => e && e.kind && e.title);
+  if (parsed.meal && (parsed.kind === 'meal' || !entries.length)) {
+    return { kind: 'meal', analysis: parsed.meal };
+  }
+  if (entries.length) {
+    return { kind: 'entries', reply: parsed.reply?.trim() || 'Logged what I could read.', entries };
+  }
+  return {
+    kind: 'unreadable',
+    reply:
+      parsed.reply?.trim() || "I couldn't make that one out — tell me what it is and I'll take it from there.",
+  };
+}
+
 export async function analyzeMealPhoto(base64: string, ctx: CoachContext): Promise<PhotoAnalysis> {
   const res = await getClient().messages.create({
     model: FAST_MODEL,
@@ -117,15 +228,20 @@ export async function analyzeMealPhoto(base64: string, ctx: CoachContext): Promi
 }
 
 // 3) Voice / text parsing — interpret a freeform log into structured fields.
-export type ParsedKind = 'meal' | 'workout' | 'recovery' | 'note';
+export type ParsedKind = 'meal' | 'workout' | 'recovery' | 'note' | 'weigh-in';
 
 export interface ParsedEntry {
   kind: ParsedKind;
   title: string;
   detail?: string;
   macros?: { kcal: number; protein_g: number; carb_g: number; fat_g: number };
-  workout?: { type: string; durationMin: number; rpe?: number };
+  // activeKcal is what the watch reported burning. It is NOT fed into the
+  // maintenance calculation — the scale already absorbed that expenditure, so
+  // adding it back would double-count. It exists for load and recovery talk.
+  workout?: { type: string; durationMin: number; rpe?: number; activeKcal?: number; avgHr?: number };
   recovery?: { sleepHrs?: number; soreness?: string; mood?: string };
+  // A photographed InBody/DEXA readout lands here and flows into the body model.
+  body?: { weightLb?: number; bodyFatPct?: number; leanLb?: number; scan?: 'inbody' | 'dexa' };
   // The coach can hint at a profile update — e.g. "tweaked calf" → +limitation
   proposedLimitation?: { label: string; note?: string };
 }

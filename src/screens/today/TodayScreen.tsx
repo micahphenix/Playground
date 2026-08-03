@@ -16,9 +16,9 @@ import { Composer } from '../../components/Composer';
 import { AccentText } from '../../components/AccentText';
 import { VoiceRecorder } from '../../components/VoiceRecorder';
 import { useData } from '../../data/DataContext';
-import { sumDayTotals } from '../../data/totals';
+import { sumDayTotals, sumDayLoad, type DayLoad } from '../../data/totals';
 import { trackingPlanFor } from '../../data/trackingPlans';
-import { analyzeMealPhoto, generateBriefing, interpret, hasApiKey } from '../../ai/coach';
+import { generateBriefing, interpret, readPhoto, hasApiKey } from '../../ai/coach';
 import { toHistory } from '../../ai/chatHistory';
 import { briefingSeed } from '../../ai/briefingThread';
 import { hasTranscriptionKey, transcribe } from '../../ai/transcribe';
@@ -87,6 +87,7 @@ export function TodayScreen() {
   }
 
   const todays = useMemo(() => sumToday(log), [log]);
+  const todaysLoad = useMemo(() => sumDayLoad(log), [log]);
   const dateLabel = useMemo(() => formatDateTitle(new Date()), []);
   const autoRegenRan = useRef(false);
   // Which briefing has already been seeded into the chat transcript, so a
@@ -241,14 +242,36 @@ export function TodayScreen() {
     setWorking(true);
     try {
       const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-      const analysis = await analyzeMealPhoto(base64, {
+      const reading = await readPhoto(base64, {
         profile,
         recentLog: log,
         memory,
         openPatterns: patterns.filter(p => p.status === 'open'),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      nav.navigate('PhotoConfirm', { photoUri: uri, analysis });
+      if (reading.kind === 'meal') {
+        nav.navigate('PhotoConfirm', { photoUri: uri, analysis: reading.analysis });
+        return;
+      }
+      // Not food. The coach's read of it belongs in the conversation either way —
+      // a workout screenshot is worth a response, not just a log row.
+      await addChatMessage({
+        id: uuid(),
+        role: 'user',
+        photoUri: uri,
+        createdAt: new Date().toISOString(),
+      }).catch(() => {});
+      await addChatMessage({
+        id: uuid(),
+        role: 'coach',
+        text: reading.reply,
+        createdAt: new Date().toISOString(),
+      }).catch(() => {});
+      if (reading.kind === 'entries') {
+        nav.navigate('VoiceConfirm', { transcript: reading.reply, durationSec: 0, entries: reading.entries });
+      } else {
+        nav.navigate('Chat');
+      }
     } catch (e: unknown) {
       Alert.alert("Coach couldn't read the photo", e instanceof Error ? e.message : 'Try again.');
     } finally {
@@ -320,7 +343,7 @@ export function TodayScreen() {
           </>
         )}
 
-        <RingsRow protein={todays.protein} calories={todays.kcal} targetP={plan.rings.protein_g} targetC={plan.rings.calories} />
+        <RingsRow protein={todays.protein} calories={todays.kcal} targetP={plan.rings.protein_g} targetC={plan.rings.calories} load={todaysLoad} />
 
         <BodyModelCard log={log} memory={memory} staticEstimateKcal={plan.rings.calories} />
 
@@ -607,11 +630,13 @@ function RingsRow({
   calories,
   targetP,
   targetC,
+  load,
 }: {
   protein: number;
   calories: number;
   targetP: number;
   targetC: number;
+  load: DayLoad;
 }) {
   const proteinPct = Math.round((protein / targetP) * 100);
   return (
@@ -639,9 +664,29 @@ function RingsRow({
           <View style={{ flex: 1, gap: 10 }}>
             <Stat label="Protein" value={protein} target={targetP} color={colors.accent} />
             <Stat label="Calories" value={calories} target={targetC} color={colors.accentAlt} />
-            <Stat label="Training" value={0} target={1} color={colors.muted} />
+            {/* Was hardcoded to 0 — the tile never moved no matter what was
+                logged. It now reflects the day's actual sessions. */}
+            <Stat label="Training" value={load.workouts} target={1} color={colors.muted} />
           </View>
         </View>
+        {(load.minutes > 0 || load.activeKcal > 0) && (
+          <Text
+            style={{
+              fontFamily: fonts.sans,
+              fontSize: 12.5,
+              color: colors.muted,
+              marginTop: 12,
+              paddingTop: 10,
+              borderTopWidth: 0.5,
+              borderTopColor: colors.line,
+            }}
+          >
+            {load.minutes > 0 ? `${load.minutes} min moving` : ''}
+            {load.minutes > 0 && load.activeKcal > 0 ? ' · ' : ''}
+            {load.activeKcal > 0 ? `${load.activeKcal.toLocaleString()} active kcal` : ''}
+            {load.activeKcal > 0 ? ' — already in your weight trend, not added back to intake' : ''}
+          </Text>
+        )}
       </Card>
     </View>
   );

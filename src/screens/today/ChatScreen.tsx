@@ -21,7 +21,7 @@ import { Card } from '../../components/Card';
 import { PhotoStripe } from '../../components/PhotoStripe';
 import { VoiceRecorder } from '../../components/VoiceRecorder';
 import { useData } from '../../data/DataContext';
-import { analyzeMealPhoto, interpret, hasApiKey } from '../../ai/coach';
+import { interpret, readPhoto, hasApiKey } from '../../ai/coach';
 import { toHistory } from '../../ai/chatHistory';
 import { hasTranscriptionKey, transcribe } from '../../ai/transcribe';
 import { pickMealPhoto } from '../../services/photoPicker';
@@ -120,9 +120,17 @@ export function ChatScreen() {
     setThinking(true);
     try {
       const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-      const analysis = await analyzeMealPhoto(base64, ctx);
+      const reading = await readPhoto(base64, ctx);
       setThinking(false);
-      nav.navigate('PhotoConfirm', { photoUri: uri, analysis });
+      if (reading.kind === 'meal') {
+        nav.navigate('PhotoConfirm', { photoUri: uri, analysis: reading.analysis });
+        return;
+      }
+      // Anything that isn't food still deserves a response in the thread.
+      pushMessage({ id: uuid(), role: 'coach', text: reading.reply, createdAt: new Date().toISOString() });
+      if (reading.kind === 'entries') {
+        nav.navigate('VoiceConfirm', { transcript: reading.reply, durationSec: 0, entries: reading.entries });
+      }
     } catch (e: unknown) {
       setThinking(false);
       Alert.alert("Couldn't read it", e instanceof Error ? e.message : 'Try again.');

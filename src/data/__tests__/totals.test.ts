@@ -1,4 +1,4 @@
-import { sumDayTotals } from '../totals';
+import { sumDayTotals, sumDayLoad } from '../totals';
 import type { LogEntry } from '../types';
 
 function entry(partial: Partial<LogEntry> & Pick<LogEntry, 'createdAt'>): LogEntry {
@@ -40,5 +40,50 @@ describe('sumDayTotals', () => {
 
   it('returns zeros for an empty log', () => {
     expect(sumDayTotals([], day)).toEqual({ kcal: 0, protein_g: 0 });
+  });
+});
+
+describe('sumDayLoad', () => {
+  const day = '2026-07-31';
+  const at = (h: number) => new Date(2026, 6, 31, h).toISOString();
+
+  function workout(p: { durationMin?: number; activeKcal?: number; hour?: number }) {
+    return {
+      id: Math.random().toString(),
+      kind: 'workout' as const,
+      title: 'ride',
+      workout: { type: 'cycling', durationMin: p.durationMin ?? 0, activeKcal: p.activeKcal },
+      source: 'quick' as const,
+      createdAt: at(p.hour ?? 9),
+    };
+  }
+
+  it('sums sessions, minutes and active calories for the day', () => {
+    const load = sumDayLoad([workout({ durationMin: 126, activeKcal: 714 }), workout({ durationMin: 45, activeKcal: 300 })], day);
+    expect(load).toEqual({ workouts: 2, minutes: 171, activeKcal: 1014 });
+  });
+
+  it('ignores meals — intake and expenditure are never netted together', () => {
+    const meal = {
+      id: 'm',
+      kind: 'meal' as const,
+      title: 'lunch',
+      macros: { kcal: 600, protein_g: 40, carb_g: 50, fat_g: 20 },
+      source: 'quick' as const,
+      createdAt: at(12),
+    };
+    expect(sumDayLoad([meal, workout({ durationMin: 30 })], day)).toEqual({
+      workouts: 1,
+      minutes: 30,
+      activeKcal: 0,
+    });
+  });
+
+  it('tolerates a workout logged with no numbers on it', () => {
+    expect(sumDayLoad([workout({})], day)).toEqual({ workouts: 1, minutes: 0, activeKcal: 0 });
+  });
+
+  it('is empty on a rest day', () => {
+    expect(sumDayLoad([], day)).toEqual({ workouts: 0, minutes: 0, activeKcal: 0 });
   });
 });
